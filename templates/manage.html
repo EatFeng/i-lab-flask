@@ -4,23 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>实验室名称输入</title>
-    <!-- 其他头部信息 -->
+    <title>实验室管理</title>
 </head>
 <body>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">
-            {{ message }}
-          </div>
+    <h1>实验室列表</h1>
+    <ul>
+        {% for lab in labs %}
+            <li>{{ lab.name }} - {{ lab.location }} - {{ lab.department }}</li>
         {% endfor %}
-      {% endif %}
-    {% endwith %}
-    <form action="{{ url_for('manage') }}" method="post">
-        <label for="lab-name">输入实验室名称：</label>
-        <input type="text" id="lab-name" name="lab_name">
-        <button type="submit">提交</button>
-    </form>
+    </ul>
+    <a href="{{ url_for('new_lab') }}">新建实验室</a>
 </body>
 </html>

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, flash, redirect, url_for
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 import os
@@ -13,27 +14,33 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.urandom(24)
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 @app.route('/home')
 def home():
     return render_template('home.html')
 
-@app.route('/manage', methods=['GET', 'POST'])
+@app.route('/manage')
 def manage():
-    error = None
+    labs = Lab.query.all()  # 获取数据库中的所有实验室信息
+    return render_template('manage.html', labs=labs)
+
+@app.route('/new-lab', methods=['GET', 'POST'])
+def new_lab():
     if request.method == 'POST':
         lab_name = request.form['lab_name']
-        new_lab = Lab(name=lab_name)
+        lab_location = request.form['lab_location']
+        lab_department = request.form['lab_department']
+        new_lab = Lab(name=lab_name, location=lab_location, department=lab_department)
         try:
             db.session.add(new_lab)
             db.session.commit()
-            flash(f'实验室名称已提交: {lab_name}', 'info')
+            flash('实验室信息已提交', 'info')
             return redirect(url_for('manage'))
         except IntegrityError:
             db.session.rollback()
-            error = '实验室名称已存在。'
-            flash(error, 'danger')
-    return render_template('manage.html', error=error)
+            flash('实验室名称已存在。', 'danger')
+    return render_template('new_lab.html')
 
 @app.before_first_request
 def create_tables():
@@ -43,6 +50,8 @@ class Lab(db.Model):
     __tablename__ = 'labs'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
+    location = db.Column(db.String(120), nullable=True)
+    department = db.Column(db.String(120), nullable=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
