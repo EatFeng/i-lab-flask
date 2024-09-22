@@ -10,7 +10,10 @@
     <h1>实验室列表</h1>
     <ul>
         {% for lab in labs %}
-            <li>{{ lab.name }} - {{ lab.location }} - {{ lab.department }}</li>
+            <li>
+                {{ lab.name }} - {{ lab.location }} - {{ lab.department }}
+                <a href="{{ url_for('lab', lab_id=lab.id) }}" class="btn">进入实验室</a>
+            </li>
         {% endfor %}
     </ul>
     <a href="{{ url_for('new_lab') }}">新建实验室</a>

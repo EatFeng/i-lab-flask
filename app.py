@@ -25,6 +25,46 @@ def manage():
     labs = Lab.query.all()  # 获取数据库中的所有实验室信息
     return render_template('manage.html', labs=labs)
 
+@app.route('/lab/<int:lab_id>', methods=['GET', 'POST'])
+def lab(lab_id):
+    lab = Lab.query.get_or_404(lab_id)
+    if request.method == 'POST':
+        if 'update_lab' in request.form:
+            lab.name = request.form['lab_name']
+            lab.location = request.form['lab_location']
+            lab.department = request.form['lab_department']
+            try:
+                db.session.commit()
+                flash('实验室信息已更新', 'info')
+            except IntegrityError:
+                db.session.rollback()
+                flash('实验室名称已存在。', 'danger')
+        elif 'add_guidance' in request.form:
+            new_guidance = Guidance(
+                lab_id=lab.id,
+                point_id=request.form['point_id'],
+                content=request.form['content'],
+                audio_path=request.form['audio_path']
+            )
+            db.session.add(new_guidance)
+            db.session.commit()
+            flash('讲解内容已添加', 'info')
+        elif 'update_guidance' in request.form:
+            guidance_id = request.form['guidance_id']
+            guidance = Guidance.query.get(guidance_id)
+            if guidance:
+                guidance.point_id = request.form['point_id']
+                guidance.content = request.form['content']
+                guidance.audio_path = request.form['audio_path']
+                try:
+                    db.session.commit()
+                    flash('讲解内容已更新', 'info')
+                except IntegrityError:
+                    db.session.rollback()
+                    flash('更新失败，请重试。', 'danger')
+    guidances = Guidance.query.filter_by(lab_id=lab_id).all()
+    return render_template('lab.html', lab=lab, guidances=guidances)
+
 @app.route('/new-lab', methods=['GET', 'POST'])
 def new_lab():
     if request.method == 'POST':
@@ -52,6 +92,14 @@ class Lab(db.Model):
     name = db.Column(db.String(80), unique=True, nullable=False)
     location = db.Column(db.String(120), nullable=True)
     department = db.Column(db.String(120), nullable=True)
+
+class Guidance(db.Model):
+    __tablename__ = 'guidance'
+    id = db.Column(db.Integer, primary_key=True)
+    lab_id = db.Column(db.Integer, db.ForeignKey('labs.id'), nullable=False)
+    point_id = db.Column(db.Integer, nullable=False)
+    content = db.Column(db.Text, nullable=True)
+    audio_path = db.Column(db.String(120), nullable=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
