@@ -3,6 +3,7 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 import os
+from paddlespeech.cli.tts.infer import TTSExecutor
 
 app = Flask(__name__)
 
@@ -15,6 +16,8 @@ app.config['SECRET_KEY'] = os.urandom(24)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+tts_executor = TTSExecutor()
 
 @app.route('/home')
 def home():
@@ -81,6 +84,21 @@ def new_lab():
             db.session.rollback()
             flash('实验室名称已存在。', 'danger')
     return render_template('new_lab.html')
+
+@app.route('/lab/<int:lab_id>/generate-audio/<int:guidance_id>', methods=['POST'])
+def generate_audio(lab_id, guidance_id):
+    guidance = Guidance.query.get(guidance_id)
+    if guidance:
+        # 生成音频
+        audio_file_path = f'./output/{guidance_id}.wav'
+        tts_executor(text=guidance.content, output='./static' + audio_file_path)
+        # 更新数据库
+        guidance.audio_path = audio_file_path
+        db.session.commit()
+        flash('音频生成成功', 'info')
+    else:
+        flash('找不到记录', 'danger')
+    return redirect(url_for('lab', lab_id=lab_id))
 
 @app.before_first_request
 def create_tables():

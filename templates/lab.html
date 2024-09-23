@@ -35,7 +35,18 @@
                 <td>{{ guidance.content }}</td>
                 <td><a href="{{ guidance.audio_path }}">{{ guidance.audio_path }}</a></td>
                 <td>
+                    {% if guidance.audio_path %}
+                        <audio controls>
+                            <source src="{{ url_for('static', filename=guidance.audio_path) }}" type="audio/wav">
+                            Your browser does not support the audio element.
+                        </audio>
+                    {% else %}
+                        暂无音频
+                    {% endif %}
+                </td>
+                <td>
                     <button onclick="editGuidance({{ guidance.id }})">修改</button>
+                    <button onclick="generateAudio({{ guidance.id }}, {{ lab.id }})">语音生成</button>
                     <form method="post" style="display: none;" id="edit-guidance-{{ guidance.id }}">
                         <input type="hidden" name="guidance_id" value="{{ guidance.id }}">
                         <label>Point ID：</label>

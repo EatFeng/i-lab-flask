@@ -43,3 +43,16 @@ function editGuidance(guidanceId) {
         }
     }
 }
+
+function generateAudio(guidanceId, labId) {
+    fetch(`/lab/${labId}/generate-audio/${guidanceId}`, {
+        method: 'POST'
+    }).then(response => {
+        if (response.ok) {
+            alert('音频生成成功');
+            location.reload();
+        } else {
+            alert('音频生成失败');
+        }
+    });
+}
