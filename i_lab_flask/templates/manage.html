@@ -12,7 +12,7 @@
     <ul>
         {% for lab in labs %}
             <li>
-                {{ lab.name }} - {{ lab.location }} - {{ lab.department }}
+                {{ lab.lab_name }} - {{ lab.location }}
                 <button class="btn" onclick="location.href='{{ url_for('lab', lab_id=lab.id) }}';">进入实验室</button>
                 <button class="btn-delete" onclick="deleteLab({{ lab.id }})">撤销实验室</button>
             </li>

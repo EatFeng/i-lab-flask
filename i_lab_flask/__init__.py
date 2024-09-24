@@ -19,3 +19,7 @@ migrate = Migrate(app, db)
 tts_executor = TTSExecutor()
 
 from i_lab_flask import views, errors
+
+@app.before_first_request
+def create_tables():
+    db.create_all()

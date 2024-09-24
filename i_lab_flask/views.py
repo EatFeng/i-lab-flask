@@ -41,9 +41,8 @@ def lab(lab_id):
     lab = Lab.query.get_or_404(lab_id)
     if request.method == 'POST':
         if 'update_lab' in request.form:
-            lab.name = request.form['lab_name']
+            lab.lab_name = request.form['lab_name']
             lab.location = request.form['lab_location']
-            lab.department = request.form['lab_department']
             try:
                 db.session.commit()
             except IntegrityError:
@@ -84,8 +83,7 @@ def new_lab():
     if request.method == 'POST':
         lab_name = request.form['lab_name']
         lab_location = request.form['lab_location']
-        lab_department = request.form['lab_department']
-        new_lab = Lab(name=lab_name, location=lab_location, department=lab_department)
+        new_lab = Lab(lab_name=lab_name, location=lab_location)
         try:
             db.session.add(new_lab)
             db.session.commit()
@@ -100,14 +98,14 @@ def generate_audio(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
         # 删除旧的音频文件
-        file_path = './static' + guidance.audio_path[1:]
+        file_path = './i_lab_flask/static' + guidance.audio_path[1:]
         if os.path.exists(file_path) and file_path[-3:] == 'wav':
             os.remove(file_path)
         # 生成音频
         timestamp = int(time.time())  # 获取当前时间戳
         audio_file_name = f'{guidance_id}_{timestamp}.wav'
         audio_file_path = './output/' + audio_file_name
-        audio_file_output_path = './static/output/' + audio_file_name
+        audio_file_output_path = './i_lab_flask/static/output/' + audio_file_name
         tts_executor(text=guidance.content, output=audio_file_output_path)
         # 更新数据库
         guidance.audio_path = audio_file_path
@@ -120,14 +118,10 @@ def delete_guidance(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
         # 删除音频文件
-        file_path = './static' + guidance.audio_path[1:]
+        file_path = './i_lab_flask/static' + guidance.audio_path[1:]
         if os.path.exists(file_path) and file_path[-3:] == 'wav':
             os.remove(file_path)
         # 删除数据库记录
         db.session.delete(guidance)
         db.session.commit()
     return redirect(url_for('lab', lab_id=lab_id))
-
-@app.before_first_request
-def create_tables():
-    db.create_all()

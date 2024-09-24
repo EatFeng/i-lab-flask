@@ -4,18 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ lab.name }} 实验室</title>
+    <title>{{ lab.lab_name }} 实验室</title>
 </head>
 <body>
-    <h1>实验室标题：{{ lab.name }}</h1>
+    <h1>实验室标题：{{ lab.lab_name }}</h1>
     <form method="post">
         <input type="hidden" name="update_lab" value="true">
         <label>实验室名称：</label>
-        <input type="text" name="lab_name" required value="{{ lab.name }}"><br>
+        <input type="text" name="lab_name" required value="{{ lab.lab_name }}"><br>
         <label>实验室位置：</label>
         <input type="text" name="lab_location" required value="{{ lab.location }}"><br>
-        <label>实验室所属部门：</label>
-        <input type="text" name="lab_department" required value="{{ lab.department }}"><br>
         <button type="submit">更新实验室信息</button>
     </form>
     <h2>实验室讲解内容</h2>
