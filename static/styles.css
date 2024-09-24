@@ -66,3 +66,24 @@ button:hover {
 .input-container button:hover {
     background-color: #0056b3;
 }
+
+/* static/styles.css */
+.btn {
+    background-color: #4CAF50; /* 绿色背景 */
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    transition-duration: 0.4s; /* 过渡效果 */
+}
+
+.btn:hover {
+    background-color: white; /* 鼠标悬浮时的背景颜色 */
+    color: black; /* 鼠标悬浮时的文字颜色 */
+    border: 2px solid #4CAF50; /* 鼠标悬浮时的边框颜色 */
+}

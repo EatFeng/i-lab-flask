@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室管理</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <h1>实验室列表</h1>
@@ -12,10 +13,11 @@
         {% for lab in labs %}
             <li>
                 {{ lab.name }} - {{ lab.location }} - {{ lab.department }}
-                <a href="{{ url_for('lab', lab_id=lab.id) }}" class="btn">进入实验室</a>
+                <button class="btn" onclick="location.href='{{ url_for('lab', lab_id=lab.id) }}';">进入实验室</button>
             </li>
         {% endfor %}
     </ul>
-    <a href="{{ url_for('new_lab') }}">新建实验室</a>
+    <a href="{{ url_for('new_lab') }}" class="btn">新建实验室</a>
+    <script src="{{ url_for('static', filename='lab.js') }}"></script>
 </body>
 </html>
