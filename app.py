@@ -21,15 +21,37 @@ migrate = Migrate(app, db)
 
 tts_executor = TTSExecutor()
 
+# home页
 @app.route('/home')
 def home():
     return render_template('home.html')
 
+# 实验室管理页面
 @app.route('/manage')
 def manage():
     labs = Lab.query.all()  # 获取数据库中的所有实验室信息
     return render_template('manage.html', labs=labs)
 
+# 删除实验室
+@app.route('/delete-lab/<int:lab_id>', methods=['POST'])
+def delete_lab(lab_id):
+    lab = Lab.query.get(lab_id)
+    if lab:
+        # 删除与此实验室相关的所有Guidance记录
+        related_guidances = Guidance.query.filter_by(lab_id=lab_id).all()
+        for guidance in related_guidances:
+            file_path = './static' + guidance.audio_path[1:]
+            if os.path.exists(file_path) and file_path[-3:] == 'wav':
+                os.remove(file_path)
+            db.session.delete(guidance)
+        db.session.commit()
+
+        # 删除实验室记录
+        db.session.delete(lab)
+        db.session.commit()
+    return redirect(url_for('manage'))
+
+# 进入实验室页面
 @app.route('/lab/<int:lab_id>', methods=['GET', 'POST'])
 def lab(lab_id):
     lab = Lab.query.get_or_404(lab_id)
@@ -72,6 +94,7 @@ def lab(lab_id):
         guidances = Guidance.query.filter_by(lab_id=lab_id).all()
         return render_template('lab.html', lab=lab, guidances=guidances)
 
+# 新建实验室页面
 @app.route('/new-lab', methods=['GET', 'POST'])
 def new_lab():
     if request.method == 'POST':
@@ -87,10 +110,15 @@ def new_lab():
             db.session.rollback()
     return render_template('new_lab.html')
 
+# 生成语音请求
 @app.route('/lab/<int:lab_id>/generate-audio/<int:guidance_id>', methods=['POST'])
 def generate_audio(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
+        # 删除旧的音频文件
+        file_path = './static' + guidance.audio_path[1:]
+        if os.path.exists(file_path) and file_path[-3:] == 'wav':
+            os.remove(file_path)
         # 生成音频
         timestamp = int(time.time())  # 获取当前时间戳
         audio_file_name = f'{guidance_id}_{timestamp}.wav'
@@ -102,6 +130,7 @@ def generate_audio(lab_id, guidance_id):
         db.session.commit()
     return redirect(url_for('lab', lab_id=lab_id))
 
+# 删除讲解请求
 @app.route('/lab/<int:lab_id>/delete-guidance/<int:guidance_id>', methods=['POST'])
 def delete_guidance(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)

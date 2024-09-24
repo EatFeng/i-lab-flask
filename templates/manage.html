@@ -14,10 +14,11 @@
             <li>
                 {{ lab.name }} - {{ lab.location }} - {{ lab.department }}
                 <button class="btn" onclick="location.href='{{ url_for('lab', lab_id=lab.id) }}';">进入实验室</button>
+                <button class="btn-delete" onclick="deleteLab({{ lab.id }})">撤销实验室</button>
             </li>
         {% endfor %}
     </ul>
     <a href="{{ url_for('new_lab') }}" class="btn">新建实验室</a>
-    <script src="{{ url_for('static', filename='lab.js') }}"></script>
+    <script src="{{ url_for('static', filename='manage.js') }}"></script>
 </body>
 </html>
