@@ -1,25 +1,9 @@
 import time
-from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.exc import IntegrityError
+from flask import render_template, request, redirect, url_for
 import os
-from paddlespeech.cli.tts.infer import TTSExecutor
-
-
-app = Flask(__name__)
-
-# 配置数据库连接
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://flaskuser:password@localhost/flaskappdb'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# 设置一个安全的 secret_key
-app.config['SECRET_KEY'] = os.urandom(24)
-
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-
-tts_executor = TTSExecutor()
+from sqlalchemy.exc import IntegrityError
+from i_lab_flask import app, db, tts_executor
+from i_lab_flask.models import Lab, Guidance
 
 # home页
 @app.route('/home')
@@ -147,21 +131,3 @@ def delete_guidance(lab_id, guidance_id):
 @app.before_first_request
 def create_tables():
     db.create_all()
-
-class Lab(db.Model):
-    __tablename__ = 'labs'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    location = db.Column(db.String(120), nullable=True)
-    department = db.Column(db.String(120), nullable=True)
-
-class Guidance(db.Model):
-    __tablename__ = 'guidance'
-    id = db.Column(db.Integer, primary_key=True)
-    lab_id = db.Column(db.Integer, db.ForeignKey('labs.id'), nullable=False)
-    point_id = db.Column(db.Integer, nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    audio_path = db.Column(db.String(120), nullable=True)
-
-if __name__ == '__main__':
-    app.run(debug=True)
