@@ -1,0 +1,19 @@
+<!-- templates/home.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中广核数科公司长三角实验室指挥讲解管理平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="title">
+        <h1>中广核数科公司长三角实验室指挥讲解管理平台</h1>
+    </div>
+    <div class="button-container">
+        <button onclick="location.href='/manage'">讲解内容管理</button>
+        <button onclick="location.href='/monitor'">现场监控</button>
+    </div>
+</body>
+</html>

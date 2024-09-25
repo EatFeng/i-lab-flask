@@ -1,0 +1,24 @@
+<!-- templates/manage.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实验室管理</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h1>实验室列表</h1>
+    <ul>
+        {% for lab in labs %}
+            <li>
+                {{ lab.lab_name }} - {{ lab.location }}
+                <button class="btn" onclick="location.href='{{ url_for('lab', lab_number=lab.lab_number) }}';">进入实验室</button>
+                <button class="btn-delete" onclick="deleteLab({{ lab.lab_number }})">撤销实验室</button>
+            </li>
+        {% endfor %}
+    </ul>
+    <a href="{{ url_for('new_lab') }}" class="btn">新建实验室</a>
+    <script src="{{ url_for('static', filename='manage.js') }}"></script>
+</body>
+</html>

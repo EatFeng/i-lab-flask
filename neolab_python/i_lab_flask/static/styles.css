@@ -1,0 +1,108 @@
+/* static/styles.css */
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    font-family: 'SimSun', '宋体', sans-serif; /* 设置字体为宋体 */
+}
+
+.title h1 {
+    font-size: 32px; /* 设置字号 */
+    margin-bottom: 20px; /* 添加一些间距 */
+}
+
+.button-container {
+    display: flex;
+    justify-content: space-around;
+    width: 50%;
+}
+
+button {
+    font-size: 24px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #ddd;
+}
+
+.input-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.input-container label {
+    margin-bottom: 10px;
+}
+
+.input-container input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+    width: 300px;
+    margin-right: 10px; /* 添加一些间距 */
+}
+
+.input-container button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.input-container button:hover {
+    background-color: #0056b3;
+}
+
+.btn {
+    background-color: #4CAF50; /* 绿色背景 */
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    transition-duration: 0.4s; /* 过渡效果 */
+}
+
+.btn:hover {
+    background-color: white; /* 鼠标悬浮时的背景颜色 */
+    color: black; /* 鼠标悬浮时的文字颜色 */
+    border: 2px solid #4CAF50; /* 鼠标悬浮时的边框颜色 */
+}
+
+.btn-delete {
+    background-color: #ff4d4d; /* 红色背景 */
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    transition-duration: 0.4s; /* 过渡效果 */
+}
+
+.btn-delete:hover {
+    background-color: white; /* 鼠标悬浮时的背景颜色 */
+    color: black; /* 鼠标悬浮时的文字颜色 */
+    border: 2px solid #ff4d4d; /* 鼠标悬浮时的边框颜色 */
+}
