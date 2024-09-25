@@ -8,7 +8,7 @@ class Lab(db.Model):
     create_time = db.Column(db.DateTime, nullable=True)
     update_time = db.Column(db.DateTime, nullable=True)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)
-    lab_number = db.Column(db.Integer, nullable=True)
+    lab_number = db.Column(db.Integer, nullable=False, unique=True)
 
 class Guidance(db.Model):
     __tablename__ = 'guidance'
@@ -17,3 +17,4 @@ class Guidance(db.Model):
     point_id = db.Column(db.Integer, nullable=False)
     content = db.Column(db.Text, nullable=False)
     audio_path = db.Column(db.String(120), nullable=True)
+    is_delete = db.Column(db.Boolean, nullable=False, default=False)

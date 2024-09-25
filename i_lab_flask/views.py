@@ -1,6 +1,8 @@
 import time
-from flask import render_template, request, redirect, url_for
+from flask import render_template, request, redirect, url_for, jsonify
 import os
+
+from paddle.quantization.imperative.utils import layer_name_map
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance
@@ -36,31 +38,53 @@ def delete_lab(lab_id):
     return redirect(url_for('manage'))
 
 # 进入实验室页面
-@app.route('/lab/<int:lab_id>', methods=['GET', 'POST'])
-def lab(lab_id):
-    lab = Lab.query.get_or_404(lab_id)
+@app.route('/lab/<int:lab_number>', methods=['GET', 'POST'])
+def lab(lab_number):
+    lab = Lab.query.filter_by(lab_number=lab_number).first_or_404()
     if request.method == 'POST':
         if 'update_lab' in request.form:
             lab.lab_name = request.form['lab_name']
             lab.location = request.form['lab_location']
             try:
                 db.session.commit()
+                response = {
+                    'state': 200,
+                    'data_num': 1,
+                    'data': {
+                        'lab_number': lab.lab_number,
+                        'lab_name': lab.lab_name,
+                        'location': lab.location
+                    }
+                }
             except IntegrityError:
                 db.session.rollback()
+                response = {'state': 500, 'message': 'Integrity error'}
         elif 'add_guidance' in request.form:
-            lab_id = lab.id
             point_id = request.form['point_id']
-            content = request.form['content'],
+            content = request.form['content']
             audio_path = request.form['audio_path']
 
             new_guidance = Guidance(
-                lab_id=lab_id,
+                lab_id=lab.id,
                 point_id=point_id,
                 content=content,
                 audio_path=audio_path
             )
             db.session.add(new_guidance)
-            db.session.commit()
+            try:
+                db.session.commit()
+                response = {
+                    'state': 200,
+                    'data_num': 1,
+                    'data': {
+                        'point_id': point_id,
+                        'content': content,
+                        'url': audio_path
+                    }
+                }
+            except IntegrityError:
+                db.session.rollback()
+                response = {'state': 500, 'message': 'Integrity error'}
         elif 'update_guidance' in request.form:
             guidance_id = request.form['guidance_id']
             guidance = Guidance.query.get(guidance_id)
@@ -70,12 +94,33 @@ def lab(lab_id):
                 guidance.audio_path = request.form['audio_path']
                 try:
                     db.session.commit()
+                    response = {
+                        'state': 200,
+                        'data_num': 1,
+                        'data': {
+                            'guidance_id': guidance.id,
+                            'point_id': guidance.point_id,
+                            'content': guidance.content,
+                            'url': guidance.audio_path
+                        }
+                    }
                 except IntegrityError:
                     db.session.rollback()
-        return redirect(url_for('lab', lab_id=lab.id))
+                    response = {'state': 500, 'message': 'Integrity error'}
+            else:
+                response = {'state': 404, 'message': 'Guidance not found'}
+        return jsonify(response)
     else:
-        guidances = Guidance.query.filter_by(lab_id=lab_id).all()
-        return render_template('lab.html', lab=lab, guidances=guidances)
+        guidances = Guidance.query.filter_by(lab_id=lab.id).all()
+        response = {
+            'state': 200,
+            'data_num': len(guidances),
+            'data': [
+                {'point_id': g.point_id, 'content': g.content, 'url': g.audio_path} for g in guidances
+            ],
+            'lab_number': lab.lab_number
+        }
+        return jsonify(response)
 
 # 新建实验室页面
 @app.route('/new-lab', methods=['GET', 'POST'])
@@ -117,11 +162,22 @@ def generate_audio(lab_id, guidance_id):
 def delete_guidance(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
-        # 删除音频文件
-        file_path = './i_lab_flask/static' + guidance.audio_path[1:]
-        if os.path.exists(file_path) and file_path[-3:] == 'wav':
-            os.remove(file_path)
-        # 删除数据库记录
-        db.session.delete(guidance)
+        # 设置is_delete为1而不是删除记录
+        guidance.is_delete = 1
         db.session.commit()
-    return redirect(url_for('lab', lab_id=lab_id))
+        # 查询所有is_delete为False的guidance记录
+        guidances = Guidance.query.filter_by(lab_id=lab_id, is_delete=False).all()
+        # 准备返回的JSON数据
+        response_data = [
+            {'guidance_id': g.id, 'point_id': g.point_id, 'content': g.content, 'url': g.audio_path}
+            for g in guidances
+        ]
+        # 返回JSON响应
+        return jsonify({
+            'state': 200,
+            'data_num': len(response_data),
+            'data': response_data
+        })
+    else:
+        # 如果guidance记录不存在，返回404状态码
+        return jsonify({'state': 404, 'message': 'Guidance not found'}), 404
