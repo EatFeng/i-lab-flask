@@ -1,41 +1,69 @@
 import time
-from flask import render_template, request, redirect, url_for, jsonify
+from flask import request, redirect, url_for, jsonify
 import os
-
-from paddle.quantization.imperative.utils import layer_name_map
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance
 
-# home页
-@app.route('/home')
-def home():
-    return render_template('home.html')
 
 # 实验室管理页面
 @app.route('/manage')
 def manage():
     labs = Lab.query.all()  # 获取数据库中的所有实验室信息
-    return render_template('manage.html', labs=labs)
+    labs_data = [
+        {
+            'id': lab.id,
+            'lab_name': lab.lab_name,
+            'location': lab.location,
+            'create_time': lab.create_time,
+            'update_time': lab.update_time,
+            'is_delete': lab.is_delete,
+            'lab_number': lab.lab_number
+        }
+        for lab in labs
+    ]
+    return jsonify({
+        'state': 200,
+        'data_num': len(labs),
+        'data': labs_data
+    })
 
 # 删除实验室
-@app.route('/delete-lab/<int:lab_id>', methods=['POST'])
-def delete_lab(lab_id):
-    lab = Lab.query.get(lab_id)
+@app.route('/delete-lab/<int:lab_number>', methods=['POST'])
+def delete_lab(lab_number):
+    lab = Lab.query.filter_by(lab_number=lab_number).first()
     if lab:
-        # 删除与此实验室相关的所有Guidance记录
-        related_guidances = Guidance.query.filter_by(lab_id=lab_id).all()
+        # 设置is_delete为1而不是删除记录
+        lab.is_delete = True
+        # 同时更新与该实验室ID关联的所有Guidance记录的is_delete字段
+        related_guidances = Guidance.query.filter_by(lab_id=lab.id).all()
         for guidance in related_guidances:
-            file_path = './static' + guidance.audio_path[1:]
-            if os.path.exists(file_path) and file_path[-3:] == 'wav':
-                os.remove(file_path)
-            db.session.delete(guidance)
+            guidance.is_delete = True
         db.session.commit()
+    else:
+        # 如果实验室记录不存在，返回404状态码
+        return jsonify({'state': 404, 'error_message': 'Lab not found'}), 404
 
-        # 删除实验室记录
-        db.session.delete(lab)
-        db.session.commit()
-    return redirect(url_for('manage'))
+    # 获取所有is_delete为False的实验室记录
+    labs = Lab.query.filter_by(is_delete=False).all()
+    labs_data = [
+        {
+            'id': lab.id,
+            'lab_name': lab.lab_name,
+            'location': lab.location,
+            'create_time': lab.create_time,
+            'update_time': lab.update_time,
+            'is_delete': lab.is_delete,
+            'lab_number': lab.lab_number
+        }
+        for lab in labs
+    ]
+    # 返回JSON响应
+    return jsonify({
+        'state': 200,
+        'data_num': len(labs),
+        'data': labs_data
+    })
 
 # 进入实验室页面
 @app.route('/lab/<int:lab_number>', methods=['GET', 'POST'])
@@ -79,7 +107,7 @@ def lab(lab_number):
                     'data': {
                         'point_id': point_id,
                         'content': content,
-                        'url': audio_path
+                        'path': audio_path
                     }
                 }
             except IntegrityError:
@@ -101,7 +129,7 @@ def lab(lab_number):
                             'guidance_id': guidance.id,
                             'point_id': guidance.point_id,
                             'content': guidance.content,
-                            'url': guidance.audio_path
+                            'path': guidance.audio_path
                         }
                     }
                 except IntegrityError:
@@ -116,26 +144,40 @@ def lab(lab_number):
             'state': 200,
             'data_num': len(guidances),
             'data': [
-                {'point_id': g.point_id, 'content': g.content, 'url': g.audio_path} for g in guidances
+                {'point_id': g.point_id, 'content': g.content, 'path': g.audio_path} for g in guidances
             ],
             'lab_number': lab.lab_number
         }
         return jsonify(response)
 
 # 新建实验室页面
-@app.route('/new-lab', methods=['GET', 'POST'])
+@app.route('/new_lab', methods=['GET', 'POST'])
 def new_lab():
     if request.method == 'POST':
         lab_name = request.form['lab_name']
         lab_location = request.form['lab_location']
-        new_lab = Lab(lab_name=lab_name, location=lab_location)
+        lab_number = request.form['lab_number']
+        new_lab = Lab(lab_name=lab_name, location=lab_location, lab_number=lab_number)
         try:
             db.session.add(new_lab)
             db.session.commit()
-            return redirect(url_for('manage'))
+            # 创建成功后，返回新实验室的信息
+            return jsonify({
+                'state': 200,
+                'data': {
+                    'id': new_lab.id,
+                    'lab_name': new_lab.lab_name,
+                    'location': new_lab.location,
+                    'lab_number': new_lab.lab_number
+                }
+            })
         except IntegrityError:
             db.session.rollback()
-    return render_template('new_lab.html')
+            # 如果发生IntegrityError，返回错误信息
+            return jsonify({'state': 400, 'message': 'Lab number already exists'}), 400
+    else:
+        # 如果是GET请求，可以返回一个空的表单或者相关信息
+        return jsonify({'state': 200, 'data': {}})
 
 # 生成语音请求
 @app.route('/lab/<int:lab_id>/generate-audio/<int:guidance_id>', methods=['POST'])
@@ -143,8 +185,8 @@ def generate_audio(lab_id, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
         # 删除旧的音频文件
-        file_path = './i_lab_flask/static' + guidance.audio_path[1:]
-        if os.path.exists(file_path) and file_path[-3:] == 'wav':
+        if guidance.audio_path is not None and guidance.audio_path[-3:] == 'wav':
+            file_path = './i_lab_flask/static' + guidance.audio_path[1:]
             os.remove(file_path)
         # 生成音频
         timestamp = int(time.time())  # 获取当前时间戳
@@ -155,7 +197,20 @@ def generate_audio(lab_id, guidance_id):
         # 更新数据库
         guidance.audio_path = audio_file_path
         db.session.commit()
-    return redirect(url_for('lab', lab_id=lab_id))
+        # 返回JSON响应
+        return jsonify({
+            'state': 200,
+            'data': {
+                'guidance_id': guidance.id,
+                'lab_id': guidance.lab_id,
+                'point_id': guidance.point_id,
+                'content': guidance.content,
+                'audio_path': guidance.audio_path
+            }
+        })
+    else:
+        # 如果guidance记录不存在，返回404状态码
+        return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
 
 # 删除讲解请求
 @app.route('/lab/<int:lab_id>/delete-guidance/<int:guidance_id>', methods=['POST'])
@@ -169,7 +224,7 @@ def delete_guidance(lab_id, guidance_id):
         guidances = Guidance.query.filter_by(lab_id=lab_id, is_delete=False).all()
         # 准备返回的JSON数据
         response_data = [
-            {'guidance_id': g.id, 'point_id': g.point_id, 'content': g.content, 'url': g.audio_path}
+            {'guidance_id': g.id, 'point_id': g.point_id, 'content': g.content, 'path': g.audio_path}
             for g in guidances
         ]
         # 返回JSON响应

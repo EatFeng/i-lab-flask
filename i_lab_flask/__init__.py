@@ -1,10 +1,13 @@
 import os
 from flask import Flask
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from paddlespeech.cli.tts.infer import TTSExecutor
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://192.168.4.80:8081/*",
+                                 "methods": ["GET", "POST"]}})
 
 # 配置数据库连接
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://flaskuser:password@localhost/flaskappdb'
