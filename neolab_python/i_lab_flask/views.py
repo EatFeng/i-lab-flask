@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
+from zoneinfo import ZoneInfo
 
 
 # 实验室管理页面
@@ -243,16 +244,16 @@ def delete_guidance(lab_number, guidance_id):
 # 小屏介绍页面
 @app.route('/ssi/manage')
 def ssi_manage():
-    ssi_labs = ssi_Lab.query.all()  # 获取数据库中的所有实验室信息
+    ssi_labs = ssi_Lab.query.filter_by(is_delete=False).all()
     ssi_labs_data = [
         {
-            'id': lab.id,
-            'lab_name': lab.lab_name,
-            'location': lab.location,
-            'create_time': lab.create_time,
-            'update_time': lab.update_time,
-            'is_delete': lab.is_delete,
-            'lab_number': lab.lab_number
+            'id': ssi_lab.id,
+            'lab_name': ssi_lab.lab_name,
+            'location': ssi_lab.location,
+            'create_time': ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
+            'update_time': ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
+            'is_delete': ssi_lab.is_delete,
+            'lab_number': ssi_lab.lab_number
         }
         for ssi_lab in ssi_labs
     ]
@@ -262,7 +263,7 @@ def ssi_manage():
         'data': ssi_labs_data
     })
 
-# 新建
+# 小屏讲解管理页 -> 新建
 @app.route('/ssi/new_lab', methods=['POST'])
 def ssi_new_lab():
     if request.method == 'POST':
@@ -274,8 +275,8 @@ def ssi_new_lab():
             lab_name=lab_name,
             location=lab_location,
             lab_number=lab_number,
-            create_time=datetime.utcnow(),
-            update_time=datetime.utcnow()
+            create_time=beijing_time_now(),
+            update_time=beijing_time_now()
         )
         try:
             db.session.add(new_ssi_lab)
@@ -288,8 +289,8 @@ def ssi_new_lab():
                     'lab_name': new_ssi_lab.lab_name,
                     'location': new_ssi_lab.location,
                     'lab_number': new_ssi_lab.lab_number,
-                    'create_time': new_ssi_lab.create_time.isoformat(),
-                    'update_time': new_ssi_lab.update_time.isoformat(),
+                    'create_time': new_ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if new_ssi_lab.create_time else None,
+                    'update_time': new_ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if new_ssi_lab.update_time else None,
                     'is_delete': new_ssi_lab.is_delete
                 }
             })
@@ -297,3 +298,84 @@ def ssi_new_lab():
             db.session.rollback()
             # 如果发生IntegrityError，返回错误信息
             return jsonify({'state': 400, 'message': 'Lab number already exists'}), 400
+
+# 小屏讲解管理页 -> 删除
+@app.route('/ssi/delete_lab/<int:lab_number>', methods=['POST'])
+def ssi_delete_lab(lab_number):
+    ssi_lab = ssi_Lab.query.filter_by(lab_number=lab_number).first()
+    if ssi_lab:
+        # 设置is_delete为1而不是删除记录
+        ssi_lab.is_delete = True
+        ssi_lab.update_time = beijing_time_now()
+        # 同时更新与该实验室ID关联的所有Guidance记录的is_delete字段
+        related_intros = Introductions.query.filter_by(lab_number=ssi_Lab.lab_number).all()
+        for intro in related_intros:
+            intro.is_delete = True
+        db.session.commit()
+    else:
+        # 如果实验室记录不存在，返回404状态码
+        return jsonify({'state': 404, 'error_message': 'Lab not found'}), 404
+
+    # 获取所有is_delete为False的实验室记录
+    ssi_labs = ssi_Lab.query.filter_by(is_delete=False).all()
+    labs_data = [
+        {
+            'id': ssi_lab.id,
+            'lab_name': ssi_lab.lab_name,
+            'location': ssi_lab.location,
+            'create_time': ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
+            'update_time': ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
+            'is_delete': ssi_lab.is_delete,
+            'lab_number': ssi_lab.lab_number
+        }
+        for ssi_lab in ssi_labs
+    ]
+    # 返回JSON响应
+    return jsonify({
+        'state': 200,
+        'data_num': len(ssi_labs),
+        'data': labs_data
+    })
+
+
+@app.route('/ssi/update_lab/<int:lab_number>', methods=['POST'])
+def ssi_update_lab(lab_number):
+    # 从表单中获取数据
+    form = request.form
+    if 'update_lab' in form:
+        lab_name = form.get('lab_name')
+        lab_location = form.get('lab_location')
+
+        # 根据实验室编号查找实验室
+        lab = ssi_Lab.query.filter_by(lab_number=lab_number).first()
+        if lab:
+            # 更新实验室信息
+            lab.lab_name = lab_name
+            lab.location = lab_location
+            lab.update_time = beijing_time_now()
+            db.session.commit()
+
+            # 返回更新后的实验室信息
+            return jsonify({
+                'state': 200,
+                'message': 'Lab updated successfully',
+                'data': {
+                    'id': lab.id,
+                    'lab_name': lab.lab_name,
+                    'location': lab.location,
+                    'create_time': lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if lab.create_time else None,
+                    'update_time': lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if lab.update_time else None,
+                    'is_delete': lab.is_delete,
+                    'lab_number': lab.lab_number
+                }
+            })
+        else:
+            # 如果找不到实验室记录，返回404状态码
+            return jsonify({'state': 404, 'message': 'Lab not found'}), 404
+    else:
+        # 如果表单中没有update_lab字段或者值不是'true'，返回400状态码
+        return jsonify({'state': 400, 'message': 'Invalid request...'}), 400
+
+# 获取当前使劲按的北京时间
+def beijing_time_now():
+     return datetime.now(ZoneInfo("Asia/Shanghai"))
