@@ -3,7 +3,8 @@ from flask import request, redirect, url_for, jsonify
 import os
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
-from i_lab_flask.models import Lab, Guidance
+from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
+from datetime import  datetime
 
 
 # 实验室管理页面
@@ -151,7 +152,7 @@ def lab(lab_number):
         return jsonify(response)
 
 # 新建实验室页面
-@app.route('/new_lab', methods=['GET', 'POST'])
+@app.route('/new_lab', methods=['POST'])
 def new_lab():
     if request.method == 'POST':
         lab_name = request.form['lab_name']
@@ -175,13 +176,10 @@ def new_lab():
             db.session.rollback()
             # 如果发生IntegrityError，返回错误信息
             return jsonify({'state': 400, 'message': 'Lab number already exists'}), 400
-    else:
-        # 如果是GET请求，可以返回一个空的表单或者相关信息
-        return jsonify({'state': 200, 'data': {}})
 
 # 生成语音请求
-@app.route('/lab/<int:lab_id>/generate-audio/<int:guidance_id>', methods=['POST'])
-def generate_audio(lab_id, guidance_id):
+@app.route('/lab/generate-audio/<int:guidance_id>', methods=['POST'])
+def generate_audio(guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
         # 删除旧的音频文件
@@ -202,7 +200,7 @@ def generate_audio(lab_id, guidance_id):
             'state': 200,
             'data': {
                 'guidance_id': guidance.id,
-                'lab_id': guidance.lab_id,
+                'lab_number': guidance.lab_number,
                 'point_id': guidance.point_id,
                 'content': guidance.content,
                 'audio_path': guidance.audio_path
@@ -213,18 +211,22 @@ def generate_audio(lab_id, guidance_id):
         return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
 
 # 删除讲解请求
-@app.route('/lab/<int:lab_id>/delete-guidance/<int:guidance_id>', methods=['POST'])
-def delete_guidance(lab_id, guidance_id):
+@app.route('/lab/<int:lab_number>/delete-guidance/<int:guidance_id>', methods=['POST'])
+def delete_guidance(lab_number, guidance_id):
     guidance = Guidance.query.get(guidance_id)
     if guidance:
         # 设置is_delete为1而不是删除记录
         guidance.is_delete = 1
         db.session.commit()
         # 查询所有is_delete为False的guidance记录
-        guidances = Guidance.query.filter_by(lab_id=lab_id, is_delete=False).all()
+        guidances = Guidance.query.filter_by(lab_number=lab_number, is_delete=False).all()
         # 准备返回的JSON数据
         response_data = [
-            {'guidance_id': g.id, 'point_id': g.point_id, 'content': g.content, 'path': g.audio_path}
+            {'guidance_id': g.id,
+             'lab_number': g.lab_number,
+             'point_id': g.point_id,
+             'content': g.content,
+             'path': g.audio_path}
             for g in guidances
         ]
         # 返回JSON响应
@@ -236,3 +238,62 @@ def delete_guidance(lab_id, guidance_id):
     else:
         # 如果guidance记录不存在，返回404状态码
         return jsonify({'state': 404, 'message': 'Guidance not found'}), 404
+
+# --------------------- 小屏介绍管理页 --------------------- #
+# 小屏介绍页面
+@app.route('/ssi/manage')
+def ssi_manage():
+    ssi_labs = ssi_Lab.query.all()  # 获取数据库中的所有实验室信息
+    ssi_labs_data = [
+        {
+            'id': lab.id,
+            'lab_name': lab.lab_name,
+            'location': lab.location,
+            'create_time': lab.create_time,
+            'update_time': lab.update_time,
+            'is_delete': lab.is_delete,
+            'lab_number': lab.lab_number
+        }
+        for ssi_lab in ssi_labs
+    ]
+    return jsonify({
+        'state': 200,
+        'data_num': len(ssi_labs),
+        'data': ssi_labs_data
+    })
+
+# 新建
+@app.route('/ssi/new_lab', methods=['POST'])
+def ssi_new_lab():
+    if request.method == 'POST':
+        lab_name = request.form['lab_name']
+        lab_location = request.form['lab_location']
+        lab_number = request.form['lab_number']
+
+        new_ssi_lab = ssi_Lab(
+            lab_name=lab_name,
+            location=lab_location,
+            lab_number=lab_number,
+            create_time=datetime.utcnow(),
+            update_time=datetime.utcnow()
+        )
+        try:
+            db.session.add(new_ssi_lab)
+            db.session.commit()
+            # 创建成功后，返回新实验室的信息
+            return jsonify({
+                'state': 200,
+                'data': {
+                    'id': new_ssi_lab.id,
+                    'lab_name': new_ssi_lab.lab_name,
+                    'location': new_ssi_lab.location,
+                    'lab_number': new_ssi_lab.lab_number,
+                    'create_time': new_ssi_lab.create_time.isoformat(),
+                    'update_time': new_ssi_lab.update_time.isoformat(),
+                    'is_delete': new_ssi_lab.is_delete
+                }
+            })
+        except IntegrityError:
+            db.session.rollback()
+            # 如果发生IntegrityError，返回错误信息
+            return jsonify({'state': 400, 'message': 'Lab number already exists'}), 400
