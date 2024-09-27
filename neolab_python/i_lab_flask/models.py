@@ -18,6 +18,7 @@ class Guidance(db.Model):
     content = db.Column(db.Text, nullable=False)
     audio_path = db.Column(db.String(255), nullable=True)
     is_delete = db.Column(db.Integer, default=0, nullable=False)
+    topic=db.Column(db.String(255), nullable=False)
 
 class ssi_Lab(db.Model):
     __tablename__ = 'ssi_labs'

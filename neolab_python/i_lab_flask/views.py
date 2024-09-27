@@ -1,11 +1,12 @@
 import time
-from flask import request, redirect, url_for, jsonify
+from flask import request, redirect, url_for, jsonify, send_file
 import os
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
 from zoneinfo import ZoneInfo
+from werkzeug.utils import secure_filename
 
 
 # 实验室管理页面
@@ -91,12 +92,14 @@ def lab(lab_number):
                 response = {'state': 500, 'message': 'Integrity error'}
         elif 'add_guidance' in request.form:
             point_id = request.form['point_id']
+            topic = request.form['topic']
             content = request.form['content']
             audio_path = request.form['audio_path']
 
             new_guidance = Guidance(
-                lab_id=lab.id,
+                lab_number=lab.lab_number,
                 point_id=point_id,
+                topic=topic,
                 content=content,
                 audio_path=audio_path
             )
@@ -107,7 +110,9 @@ def lab(lab_number):
                     'state': 200,
                     'data_num': 1,
                     'data': {
+                        'lab_number': lab.lab_number,
                         'point_id': point_id,
+                        'topic': topic,
                         'content': content,
                         'path': audio_path
                     }
@@ -120,6 +125,7 @@ def lab(lab_number):
             guidance = Guidance.query.get(guidance_id)
             if guidance:
                 guidance.point_id = request.form['point_id']
+                guidance.topic = request.form['topic']
                 guidance.content = request.form['content']
                 guidance.audio_path = request.form['audio_path']
                 try:
@@ -130,6 +136,7 @@ def lab(lab_number):
                         'data': {
                             'guidance_id': guidance.id,
                             'point_id': guidance.point_id,
+                            'topic': guidance.topic,
                             'content': guidance.content,
                             'path': guidance.audio_path
                         }
@@ -141,12 +148,16 @@ def lab(lab_number):
                 response = {'state': 404, 'message': 'Guidance not found'}
         return jsonify(response)
     else:
-        guidances = Guidance.query.filter_by(lab_id=lab.id).all()
+        guidances = Guidance.query.filter_by(lab_number=lab.id).all()
         response = {
             'state': 200,
             'data_num': len(guidances),
             'data': [
-                {'point_id': g.point_id, 'content': g.content, 'path': g.audio_path} for g in guidances
+                {'point_id': g.point_id,
+                 'topic': g.topic,
+                 'content': g.content,
+                 'path': g.audio_path
+                 } for g in guidances
             ],
             'lab_number': lab.lab_number
         }
@@ -210,6 +221,75 @@ def generate_audio(guidance_id):
     else:
         # 如果guidance记录不存在，返回404状态码
         return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
+
+# 获取语音文件
+@app.route('/get_audio', methods=['POST'])
+def get_audio():
+    point_id = request.form.get('point_id')
+    lab_number = request.form.get('lab_number')
+
+    if point_id is None or lab_number is None:
+        return jsonify({'error': 'Missing point_id or lab_number',
+                        'state':400
+                        }), 400
+
+    # 在Guidance模型中检索匹配的记录
+    guidance = Guidance.query.filter_by(point_id=point_id, lab_number=lab_number).first()
+    if guidance is None:
+        return jsonify({'error': 'Guidance Record not found',
+                        'state': 404
+                        }), 404
+
+    # 检查数据库中是否保存该记录的音频路径
+    if guidance.audio_path is None:
+        return jsonify({'error': 'The audio has not been generated yet',
+                        'state': 404
+                        }), 404
+
+    # 确保文件存在
+    audio_file_path = os.path.join(app.config['UPLOAD_FOLDER'], guidance.audio_path)
+    print(audio_file_path)
+    if not os.path.isfile(audio_file_path):
+        return jsonify({'error': 'Audio file not found',
+                        'state': 404
+                        }), 404
+
+    # 返回音频文件
+    return send_file(audio_file_path, as_attachment=True, download_name=secure_filename(guidance.audio_path))
+
+# 获取讲解内容
+@app.route('/get_guidance_content', methods=['POST'])
+def get_guidance_content():
+    point_id = request.form.get('point_id')
+    lab_number = request.form.get('lab_number')
+
+    if point_id is None or lab_number is None:
+        return jsonify({'error': 'Missing point_id or lab_number',
+                        'state:': 400
+                        }), 400
+
+    # 在Guidance模型中检索匹配的记录
+    guidance = Guidance.query.filter_by(point_id=point_id, lab_number=lab_number).first()
+
+    # 检查是否找到记录
+    if guidance is None:
+        return jsonify({'error': 'Guidance not found',
+                        'state': 404
+                        }), 404
+
+    # 检查content字段是否为null或者非null但是内容为空
+    if guidance.content is None or (guidance.content is not None and not guidance.content.strip()):
+        return jsonify({'error': 'Content is empty or null',
+                        'state': 404
+                        }), 404
+
+    # 返回content字段数据的JSON
+    response = {
+        'point_id': guidance.point_id,
+        'lab_number': guidance.lab_number,
+        'content': guidance.content
+    }
+    return jsonify(response)
 
 # 删除讲解请求
 @app.route('/lab/<int:lab_number>/delete-guidance/<int:guidance_id>', methods=['POST'])
@@ -337,7 +417,7 @@ def ssi_delete_lab(lab_number):
         'data': labs_data
     })
 
-
+# 小屏讲解管理页 -> 删除
 @app.route('/ssi/update_lab/<int:lab_number>', methods=['POST'])
 def ssi_update_lab(lab_number):
     # 从表单中获取数据
@@ -376,6 +456,6 @@ def ssi_update_lab(lab_number):
         # 如果表单中没有update_lab字段或者值不是'true'，返回400状态码
         return jsonify({'state': 400, 'message': 'Invalid request...'}), 400
 
-# 获取当前使劲按的北京时间
+# 获取当前时间的北京时间
 def beijing_time_now():
      return datetime.now(ZoneInfo("Asia/Shanghai"))

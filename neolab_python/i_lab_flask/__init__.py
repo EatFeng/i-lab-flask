@@ -12,6 +12,7 @@ CORS(app, resources={r"/*": {"origins": "http://192.168.4.80:8081/*",
 # 配置数据库连接
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://flaskuser:password@localhost/flaskappdb'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = 'F:/PythonProjects/neoLab/neolab_python/i_lab_flask/'
 
 # 设置一个安全的 secret_key
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
