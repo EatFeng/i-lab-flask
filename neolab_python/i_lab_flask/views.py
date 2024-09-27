@@ -615,6 +615,50 @@ def add_intro(lab_number):
         app.logger.error(f"Error occurred: {e}")
         return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
+# 小屏讲解管理页 -> 详情 -> 编辑
+@app.route('/ssi/update_intro/<int:intro_id>', methods=['POST'])
+def update_intro(intro_id):
+    # 从表单中获取数据
+    summary = request.form.get('summary')
+    details = request.form.get('details')
+
+    if not summary or not details:
+        return jsonify({'error': 'Missing summary or details', 'state': 400}), 400
+
+    # 获取当前时间
+    current_time = beijing_time_now()
+
+    # 查询匹配的记录
+    intro = Introductions.query.filter_by(id=intro_id).first()
+    if intro is None:
+        return jsonify({'error': 'Introduction not found', 'state': 404}), 404
+
+    # 更新记录
+    try:
+        intro.summary = summary
+        intro.details = details
+        intro.update_time = current_time
+        db.session.commit()
+
+        # 返回更新后的记录
+        return jsonify({
+            'state': 200,
+            'data': {
+                'id': intro.id,
+                'lab_number': intro.lab_number,
+                'time_line': intro.time_line.isoformat(),
+                'summary': intro.summary,
+                'details': intro.details,
+                'is_delete': intro.is_delete,
+                'update_time': intro.update_time.isoformat() if intro.update_time else None
+            }
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
+
 # 获取当前时间的北京时间
 def beijing_time_now():
      return datetime.now(ZoneInfo("Asia/Shanghai"))
