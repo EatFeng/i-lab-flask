@@ -513,7 +513,107 @@ def ssi_update_lab(lab_number):
         # 如果表单中没有update_lab字段或者值不是'true'，返回400状态码
         return jsonify({'state': 400, 'message': 'Invalid request...'}), 400
 
+# 小屏讲解管理页 -> 详情
+@app.route('/ssi/lab/<int:lab_number>', methods=['GET'])
+def ssi_lab(lab_number):
+    if lab_number is None:
+        return jsonify({'error': 'Missing lab_number parameter', 'state': 400}), 400
 
+    try:
+        intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
+        if not intros:
+            return jsonify({'error': 'No records found', 'state': 404}), 404
+
+        intros_data = [
+            {
+                'id': intro.id,
+                'lab_number': intro.lab_number,
+                'time_line': intro.time_line.isoformat() if intro.time_line else None,
+                'summary': intro.summary,
+                'details': intro.details,
+                'is_delete': intro.is_delete,
+                'update_time': intro.update_time.isoformat() if intro.update_time else None
+            }
+            for intro in intros
+        ]
+
+        return jsonify({'state': 200 ,'data': intros_data}), 200
+
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
+
+@app.route('/get_intros_by_lab_number', methods=['GET'])
+def get_intros_by_lab_number():
+    lab_number = request.args.get('lab_number')
+    if lab_number is None:
+        return jsonify({'error': 'Missing lab_number parameter', 'state': 400}), 400
+
+    try:
+        intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
+        if not intros:
+            return jsonify({'error': 'No records found', 'state': 404}), 404
+
+        intros_data = [
+            {
+                'id': intro.id,
+                'lab_number': intro.lab_number,
+                'time_line': intro.time_line.isoformat() if intro.time_line else None,
+                'summary': intro.summary,
+                'details': intro.details,
+                'is_delete': intro.is_delete,
+                'update_time': intro.update_time.isoformat() if intro.update_time else None
+            }
+            for intro in intros
+        ]
+
+        return jsonify(intros_data), 200
+
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
+
+# 小屏讲解管理页 -> 详情 -> 新建
+@app.route('/ssi/add_intro/<int:lab_number>', methods=['POST'])
+def add_intro(lab_number):
+    # 从表单中获取数据
+    summary = request.form.get('summary')
+    details = request.form.get('details')
+
+    if not summary or not details:
+        return jsonify({'error': 'Missing summary or details', 'state': 400}), 400
+
+    # 获取当前时间
+    current_time = beijing_time_now()
+
+    # 创建新的记录
+    new_intro = Introductions(
+        lab_number=lab_number,
+        time_line=current_time,
+        summary=summary,
+        details=details,
+        update_time=current_time
+    )
+
+    # 将记录添加到数据库
+    try:
+        db.session.add(new_intro)
+        db.session.commit()
+        return jsonify({
+            'state': 200,
+            'data': {
+                'id': new_intro.id,
+                'lab_number': new_intro.lab_number,
+                'time_line': new_intro.time_line.isoformat(),
+                'summary': new_intro.summary,
+                'details': new_intro.details,
+                'is_delete': new_intro.is_delete,
+                'update_time': new_intro.update_time.isoformat() if new_intro.update_time else None
+            }
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
 # 获取当前时间的北京时间
 def beijing_time_now():
