@@ -196,14 +196,13 @@ def generate_audio(guidance_id):
     if guidance:
         # 删除旧的音频文件
         if guidance.audio_path is not None and guidance.audio_path[-3:] == 'wav':
-            file_path = './i_lab_flask/static' + guidance.audio_path[1:]
+            file_path = guidance.audio_path[1:]
             os.remove(file_path)
         # 生成音频
         timestamp = int(time.time())  # 获取当前时间戳
         audio_file_name = f'{guidance_id}_{timestamp}.wav'
-        audio_file_path = './output/' + audio_file_name
-        audio_file_output_path = './i_lab_flask/static/output/' + audio_file_name
-        tts_executor(text=guidance.content, output=audio_file_output_path)
+        audio_file_path = 'output/' + audio_file_name
+        tts_executor(text=guidance.content, output=audio_file_path)
         # 更新数据库
         guidance.audio_path = audio_file_path
         db.session.commit()
@@ -222,7 +221,7 @@ def generate_audio(guidance_id):
         # 如果guidance记录不存在，返回404状态码
         return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
 
-# 获取语音文件
+# 发送语音文件
 @app.route('/get_audio', methods=['POST'])
 def get_audio():
     point_id = request.form.get('point_id')
@@ -234,7 +233,7 @@ def get_audio():
                         }), 400
 
     # 在Guidance模型中检索匹配的记录
-    guidance = Guidance.query.filter_by(point_id=point_id, lab_number=lab_number).first()
+    guidance = Guidance.query.filter_by(point_id=point_id, lab_number=lab_number, is_delete=False).first()
     if guidance is None:
         return jsonify({'error': 'Guidance Record not found',
                         'state': 404
@@ -257,7 +256,65 @@ def get_audio():
     # 返回音频文件
     return send_file(audio_file_path, as_attachment=True, download_name=secure_filename(guidance.audio_path))
 
-# 获取讲解内容
+# 上传音频文件
+@app.route('/upload_audio', methods=['POST'])
+def upload_audio():
+    # 检查是否有文件在请求中
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part in the request',
+                        'state': 400
+                        }), 400
+
+    file = request.files['file']
+    point_id = request.form.get('point_id')
+    lab_number = request.form.get('lab_number')
+
+    if file.filename == '':
+        return jsonify({'error': 'No selected file',
+                        'state': 400
+                        }), 400
+    if point_id is None or lab_number is None:
+        return jsonify({'error': 'Missing point_id or lab_number',
+                        'state': 400
+                        }), 400
+
+    if file and allowed_file(file.filename):
+        filename = 'upload/' + secure_filename(file.filename)
+        audio_file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(audio_file_path)
+
+        # 查找匹配的记录并更新is_delete
+        existing_guidance = Guidance.query.filter_by(point_id=point_id, lab_number=lab_number, is_delete=False).first()
+        if existing_guidance:
+            existing_guidance.is_delete = True
+            content = existing_guidance.content
+            topic = existing_guidance.topic
+            db.session.commit()
+        else:
+            return jsonify({'error': 'Guidance Record not found',
+                            'state': 404
+                            }), 404
+
+        # 保存记录到数据库
+        new_guidance = Guidance(point_id=point_id,
+                                lab_number=lab_number,
+                                topic = topic,
+                                content = content,
+                                audio_path=filename)
+        db.session.add(new_guidance)
+        db.session.commit()
+
+        return jsonify({'message': 'File uploaded successfully',
+                        'path': audio_file_path,
+                        'state': 200
+                        }), 200
+
+    else:
+        return jsonify({'error': 'File type not allowed',
+                        'state': 400
+                        }), 400
+
+# 发送讲解内容
 @app.route('/get_guidance_content', methods=['POST'])
 def get_guidance_content():
     point_id = request.form.get('point_id')
@@ -417,7 +474,7 @@ def ssi_delete_lab(lab_number):
         'data': labs_data
     })
 
-# 小屏讲解管理页 -> 删除
+# 小屏讲解管理页 -> 编辑
 @app.route('/ssi/update_lab/<int:lab_number>', methods=['POST'])
 def ssi_update_lab(lab_number):
     # 从表单中获取数据
@@ -456,6 +513,13 @@ def ssi_update_lab(lab_number):
         # 如果表单中没有update_lab字段或者值不是'true'，返回400状态码
         return jsonify({'state': 400, 'message': 'Invalid request...'}), 400
 
+
+
 # 获取当前时间的北京时间
 def beijing_time_now():
      return datetime.now(ZoneInfo("Asia/Shanghai"))
+
+# 允许的文件格式
+def allowed_file(filename):
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in {'wav'}

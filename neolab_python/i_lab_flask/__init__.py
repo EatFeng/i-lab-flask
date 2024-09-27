@@ -13,7 +13,8 @@ CORS(app, resources={r"/*": {"origins": "http://192.168.4.80:8081/*",
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://flaskuser:password@localhost/flaskappdb'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'F:/PythonProjects/neoLab/neolab_python/i_lab_flask/'
-
+# 设置上传文件的最大尺寸为16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # 设置一个安全的 secret_key
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 
