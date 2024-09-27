@@ -1,6 +1,8 @@
 import time
 from flask import request, redirect, url_for, jsonify, send_file
 import os
+
+from onnxruntime.transformers.shape_infer_helper import file_path
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
@@ -196,12 +198,11 @@ def generate_audio(guidance_id):
     if guidance:
         # 删除旧的音频文件
         if guidance.audio_path is not None and guidance.audio_path[-3:] == 'wav':
-            file_path = guidance.audio_path[1:]
-            os.remove(file_path)
+            os.remove(guidance.audio_path)
         # 生成音频
         timestamp = int(time.time())  # 获取当前时间戳
         audio_file_name = f'{guidance_id}_{timestamp}.wav'
-        audio_file_path = 'output/' + audio_file_name
+        audio_file_path = 'i_lab_flask/output/' + audio_file_name
         tts_executor(text=guidance.content, output=audio_file_path)
         # 更新数据库
         guidance.audio_path = audio_file_path
@@ -658,6 +659,43 @@ def update_intro(intro_id):
         app.logger.error(f"Error occurred: {e}")
         db.session.rollback()
         return jsonify({'error': 'Internal server error', 'state': 500}), 500
+
+# 小屏讲解管理页 -> 详情 -> 删除
+@app.route('/delete_intro/<int:intro_id>/<int:lab_number>', methods=['POST'])
+def delete_intro(intro_id, lab_number):
+    # 查询匹配的记录
+    intro = Introductions.query.filter_by(id=intro_id, lab_number=lab_number, is_delete=False).first()
+    if intro is None:
+        return jsonify({'error': 'Introduction not found or already deleted', 'state': 404}), 404
+
+    # 更新is_delete字段
+    intro.is_delete = True
+    try:
+        db.session.commit()
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
+
+    # 查询lab_number匹配且is_delete为False的所有记录
+    intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
+
+    # 构建返回的数据
+    intros_data = [
+        {
+            'id': record.id,
+            'lab_number': record.lab_number,
+            'time_line': record.time_line.isoformat(),
+            'summary': record.summary,
+            'details': record.details,
+            'is_delete': record.is_delete,
+            'update_time': record.update_time.isoformat() if record.update_time else None
+        }
+        for record in intros
+    ]
+
+    # 返回查询结果
+    return jsonify(intros_data), 200
 
 # 获取当前时间的北京时间
 def beijing_time_now():
