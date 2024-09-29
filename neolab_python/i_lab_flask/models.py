@@ -34,7 +34,7 @@ class Introductions(db.Model):
     __tablename__ = 'intro'
     id = db.Column(db.Integer, primary_key=True)
     lab_number = db.Column(db.Integer, db.ForeignKey('labs.lab_number'), nullable=False)
-    time_line = db.Column(db.DateTime, nullable=False)
+    image_path = db.Column(db.String(255), nullable=True)
     summary= db.Column(db.String(200), nullable=False)
     details = db.Column(db.Text, nullable=False)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)

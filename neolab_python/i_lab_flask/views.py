@@ -1,14 +1,12 @@
 import time
-from flask import request, redirect, url_for, jsonify, send_file
+from flask import request, jsonify, send_file
 import os
-
-from onnxruntime.transformers.shape_infer_helper import file_path
 from sqlalchemy.exc import IntegrityError
 from i_lab_flask import app, db, tts_executor
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
 from zoneinfo import ZoneInfo
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename, safe_join
 
 
 # 实验室管理页面
@@ -150,7 +148,7 @@ def lab(lab_number):
                 response = {'state': 404, 'message': 'Guidance not found'}
         return jsonify(response)
     else:
-        guidances = Guidance.query.filter_by(lab_number=lab.id).all()
+        guidances = Guidance.query.filter_by(lab_number=lab.lab_number, is_delete=False).all()
         response = {
             'state': 200,
             'data_num': len(guidances),
@@ -279,7 +277,7 @@ def upload_audio():
                         'state': 400
                         }), 400
 
-    if file and allowed_file(file.filename):
+    if file and allowed_audio_file(file.filename):
         filename = 'upload/' + secure_filename(file.filename)
         audio_file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(audio_file_path)
@@ -661,7 +659,7 @@ def update_intro(intro_id):
         return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
 # 小屏讲解管理页 -> 详情 -> 删除
-@app.route('/delete_intro/<int:intro_id>/<int:lab_number>', methods=['POST'])
+@app.route('/ssi/delete_intro/<int:intro_id>/<int:lab_number>', methods=['POST'])
 def delete_intro(intro_id, lab_number):
     # 查询匹配的记录
     intro = Introductions.query.filter_by(id=intro_id, lab_number=lab_number, is_delete=False).first()
@@ -697,11 +695,69 @@ def delete_intro(intro_id, lab_number):
     # 返回查询结果
     return jsonify(intros_data), 200
 
+# 小屏讲解管理页 -> 详情 -> 获取照片
+@app.route('/ssi/get_image/<int:lab_number>/<int:intro_id>', methods=['GET'])
+def get_image(lab_number, intro_id):
+    # 查询匹配的记录
+    intro = Introductions.query.filter_by(lab_number=lab_number, id=intro_id, is_delete=False).first()
+    if intro is None or not intro.image_path:
+        return jsonify({'error': 'Image not found', 'state': 404}), 404
+
+    # 构建图片文件的路径
+    image_file_path = os.path.join(app.config['UPLOAD_FOLDER'], intro.image_path)
+    print(image_file_path)
+    # 检查图片文件是否存在
+    if not os.path.isfile(image_file_path):
+        return jsonify({'error': 'Image file not found', 'state': 404}), 404
+
+    # 返回图片文件
+    return send_file(image_file_path, mimetype='image/png')
+
+
+# 小屏讲解管理页 -> 详情 -> 上传照片
+@app.route('/ssi/upload_image/<int:lab_number>/<int:intro_id>', methods=['POST'])
+def upload_image(lab_number, intro_id):
+    # 检查是否有文件在请求中
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image part in the request', 'state': 400}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file', 'state': 400}), 400
+
+    if file and allowed_image_file(file.filename):
+        filename = 'i_lab_flask/images/' + secure_filename(file.filename)
+        image_file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_file_path)
+
+        # 查询匹配的记录
+        intro = Introductions.query.filter_by(lab_number=lab_number, id=intro_id, is_delete=False).first()
+        if intro is None:
+            return jsonify({'error': 'Introduction not found', 'state': 404}), 404
+
+        # 更新image_path字段
+        intro.image_path = image_file_path
+        try:
+            db.session.commit()
+            return jsonify(
+                {'message': 'Image uploaded and path updated successfully', 'state': 200, 'path': image_file_path}), 200
+        except Exception as e:
+            app.logger.error(f"Error occurred: {e}")
+            db.session.rollback()
+            return jsonify({'error': 'Internal server error', 'state': 500}), 500
+    else:
+        return jsonify({'error': 'File type not allowed', 'state': 400}), 400
+
 # 获取当前时间的北京时间
 def beijing_time_now():
      return datetime.now(ZoneInfo("Asia/Shanghai"))
 
 # 允许的文件格式
-def allowed_file(filename):
+def allowed_audio_file(filename):
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in {'wav'}
+
+# 允许的文件格式
+def allowed_image_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
