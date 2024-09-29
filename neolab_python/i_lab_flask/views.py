@@ -2,12 +2,14 @@ import time
 from flask import request, jsonify, send_file
 import os
 from sqlalchemy.exc import IntegrityError
-from i_lab_flask import app, db, tts_executor
+from i_lab_flask import app, db, tts_executor, asr_executor
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
 from zoneinfo import ZoneInfo
-from werkzeug.utils import secure_filename, safe_join
-
+from werkzeug.utils import secure_filename
+import tempfile
+import json
+from sqlalchemy import asc
 
 # 实验室管理页面
 @app.route('/manage')
@@ -148,7 +150,7 @@ def lab(lab_number):
                 response = {'state': 404, 'message': 'Guidance not found'}
         return jsonify(response)
     else:
-        guidances = Guidance.query.filter_by(lab_number=lab.lab_number, is_delete=False).all()
+        guidances = Guidance.query.filter_by(lab_number=lab_number, is_delete=False).order_by(asc(Guidance.point_id)).all()
         response = {
             'state': 200,
             'data_num': len(guidances),
@@ -220,7 +222,7 @@ def generate_audio(guidance_id):
         # 如果guidance记录不存在，返回404状态码
         return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
 
-# 发送语音文件
+# 获取音频文件
 @app.route('/get_audio', methods=['POST'])
 def get_audio():
     point_id = request.form.get('point_id')
@@ -278,7 +280,7 @@ def upload_audio():
                         }), 400
 
     if file and allowed_audio_file(file.filename):
-        filename = 'upload/' + secure_filename(file.filename)
+        filename = 'i_lab_flask/upload/' + secure_filename(file.filename)
         audio_file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(audio_file_path)
 
@@ -527,7 +529,7 @@ def ssi_lab(lab_number):
             {
                 'id': intro.id,
                 'lab_number': intro.lab_number,
-                'time_line': intro.time_line.isoformat() if intro.time_line else None,
+                'image_path': intro.image_path if intro.image_path else None,
                 'summary': intro.summary,
                 'details': intro.details,
                 'is_delete': intro.is_delete,
@@ -537,36 +539,6 @@ def ssi_lab(lab_number):
         ]
 
         return jsonify({'state': 200 ,'data': intros_data}), 200
-
-    except Exception as e:
-        app.logger.error(f"Error occurred: {e}")
-        return jsonify({'error': 'Internal server error', 'state': 500}), 500
-
-@app.route('/get_intros_by_lab_number', methods=['GET'])
-def get_intros_by_lab_number():
-    lab_number = request.args.get('lab_number')
-    if lab_number is None:
-        return jsonify({'error': 'Missing lab_number parameter', 'state': 400}), 400
-
-    try:
-        intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
-        if not intros:
-            return jsonify({'error': 'No records found', 'state': 404}), 404
-
-        intros_data = [
-            {
-                'id': intro.id,
-                'lab_number': intro.lab_number,
-                'time_line': intro.time_line.isoformat() if intro.time_line else None,
-                'summary': intro.summary,
-                'details': intro.details,
-                'is_delete': intro.is_delete,
-                'update_time': intro.update_time.isoformat() if intro.update_time else None
-            }
-            for intro in intros
-        ]
-
-        return jsonify(intros_data), 200
 
     except Exception as e:
         app.logger.error(f"Error occurred: {e}")
@@ -748,16 +720,107 @@ def upload_image(lab_number, intro_id):
     else:
         return jsonify({'error': 'File type not allowed', 'state': 400}), 400
 
+# --------------------- 另外的功能 --------------------- #
+# 语音转文字
+@app.route('/speech2text', methods=['POST'])
+def speech2text():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part in the request'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file:
+        filename = 'temp.wav'
+        file.save(filename)
+
+        # 调用ASR进行语音识别
+        try:
+            result = asr_executor(audio_file=filename)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+        # 删除临时文件
+        os.remove(filename)
+
+        # 返回识别结果
+        return jsonify({'text': result})
+
+# 文字转语音
+@app.route('/text2speech', methods=['POST'])
+def text2speech():
+    if 'text' not in request.form:
+        return jsonify({'error': 'No text provided'}), 400
+
+    text = request.form['text']
+    # 创建临时文件
+    temp_dir = tempfile.gettempdir()
+    temp_file = os.path.join(temp_dir, 'output.wav')
+
+    # 生成语音文件
+    tts_executor(text=text, output=temp_file)
+
+    # 发送语音文件
+    return send_file(temp_file, as_attachment=True)
+
+# 保存
+@app.route('/save_guidance', methods=['POST'])
+def save_guidance():
+    # 检查表单数据
+    if 'lab_number' not in request.form or 'points' not in request.form or 'files' not in request.files:
+        return jsonify({'error': 'Missing form data'}), 400
+
+    lab_number = request.form['lab_number']
+    points = request.form['points']
+    files = request.files.getlist('files')
+
+    # 解析points数据
+    points_data = json.loads(points)
+
+    # Step 1: 检查points和files的长度是否相等
+    if len(points_data) != len(files):
+        print(points_data)
+        print(len(points_data))
+        print(files, len(files))
+        return jsonify({'error': 'Points and files count mismatch'}), 400
+
+    # Step 2: 删除旧记录
+    old_records = Guidance.query.filter_by(lab_number=lab_number, is_delete=0).all()
+    for record in old_records:
+        record.is_delete = 1
+    db.session.commit()
+
+    # Step 3: 插入新记录
+    for index, point_data in enumerate(points_data):
+        file = files[index]
+        point_id = point_data.get('pointId')
+        content = point_data.get('content')
+        topic = point_data.get('topic')
+
+        new_record = Guidance(
+            lab_number=lab_number,
+            point_id=point_id,
+            content=content,
+            topic=topic,
+            audio_path='i_lab_flask/output/' + secure_filename(file.filename)
+        )
+        db.session.add(new_record)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], new_record.audio_path))
+    db.session.commit()
+
+    return jsonify({'message': 'Successfully Saved'})
+
 # 获取当前时间的北京时间
 def beijing_time_now():
      return datetime.now(ZoneInfo("Asia/Shanghai"))
 
-# 允许的文件格式
+# 允许的音频文件格式
 def allowed_audio_file(filename):
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in {'wav'}
 
-# 允许的文件格式
+# 允许的图片文件格式
 def allowed_image_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
