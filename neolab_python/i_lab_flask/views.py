@@ -2,7 +2,7 @@ import time
 from flask import request, jsonify, send_file
 import os
 from sqlalchemy.exc import IntegrityError
-from i_lab_flask import app, db, tts_executor, asr_executor
+from i_lab_flask import app, db, tts_executor, asr_executor, tokenizer, model, history
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
 from zoneinfo import ZoneInfo
@@ -810,6 +810,24 @@ def save_guidance():
     db.session.commit()
 
     return jsonify({'message': 'Successfully Saved'})
+
+# 聊天机器人
+@app.route('/chat', methods=['POST'])
+def chat():
+    global history
+    query = request.form.get('query')
+    print(query)
+    if not query:
+        return jsonify({'error': 'No query provided.'}), 400
+
+    # 生成回复
+    response, history = model.chat(tokenizer, query=query, history=history)
+    print(response)
+
+    # 返回模型的回复
+    return jsonify({'response': response, 'history': history})
+
+
 
 # 获取当前时间的北京时间
 def beijing_time_now():
