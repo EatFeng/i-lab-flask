@@ -536,8 +536,8 @@ def ssi_lab(lab_number):
             return jsonify({'error': 'Lab not found', 'state': 404}), 404
 
         # 将ssi_lab中的img_segmentation和img_total转为base64，传回前端
-        img_seg_base64 = photo2base64(lab.img_segmentation)
-        img_tot_base64 = photo2base64(lab.img_total)
+        img_seg_base64 = image_to_base64(lab.img_segmentation)
+        img_tot_base64 = image_to_base64(lab.img_total)
 
         # 查询Introductions表中的记录
         intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
@@ -814,6 +814,7 @@ def update_ssi_lab(lab_number):
 
     return jsonify({'state': 200, 'message': 'Lab updated successfully', 'data': lab_data}), 200
 
+# 移动端 -> 上传/修改
 @app.route('/mobile/lab/<int:lab_number>', methods=['GET'])
 def get_ssi_lab(lab_number):
     # 查询ssi_Lab表中的记录
@@ -821,7 +822,7 @@ def get_ssi_lab(lab_number):
     if not lab:
         return jsonify({'error': 'Lab not found', 'state': 404}), 404
 
-    ico_base64 = photo2base64(lab.ico_path)
+    ico_base64 = image_to_base64(lab.ico_path)
 
     # 构建返回的JSON数据
     lab_data = {
@@ -978,16 +979,28 @@ def allowed_image_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
-# 将图片转为base64
-def photo2base64(image_path):
-    encoded_string = ''
-    # 检查图片是否存在
-    if image_path is not None:
-        if not os.path.exists(image_path):
-            return "Image not found", 404
-        else:
-            # 读取图片文件并转换为base64字符串
-            with open(image_path, "rb") as image_file:
-                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+# 将图片转为base64图像源字符串
+def image_to_base64(image_path):
+    # 检查文件是否存在
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
 
-    return encoded_string
+    # 读取图片文件为二进制数据
+    with open(image_path, "rb") as image_file:
+        # 将二进制数据转换为Base64编码的字符串
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+
+    # 获取文件扩展名
+    file_extension = os.path.splitext(image_path)[1].lower()
+
+    # 构建完整的Base64图像源字符串
+    if file_extension == '.jpg' or file_extension == '.jpeg':
+        mime_type = 'image/jpeg'
+    elif file_extension == '.png':
+        mime_type = 'image/png'
+    else:
+        raise ValueError("Unsupported image format")
+
+    base64_image_source = f"data:{mime_type};base64,{encoded_string}"
+
+    return base64_image_source
