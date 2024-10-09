@@ -426,10 +426,12 @@ def ssi_new_lab():
                     'id': new_ssi_lab.id,
                     'lab_name': new_ssi_lab.lab_name,
                     'location': new_ssi_lab.location,
+                    'create_time': new_ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
+                    'update_time': new_ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
+                    'is_delete': new_ssi_lab.is_delete,
                     'lab_number': new_ssi_lab.lab_number,
-                    'create_time': new_ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if new_ssi_lab.create_time else None,
-                    'update_time': new_ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if new_ssi_lab.update_time else None,
-                    'is_delete': new_ssi_lab.is_delete
+                    'img_segmentation': new_ssi_lab.img_segmentation,
+                    'img_total': new_ssi_lab.img_total
                 }
             })
         except IntegrityError:
@@ -464,7 +466,9 @@ def ssi_delete_lab(lab_number):
             'create_time': ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
             'update_time': ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
             'is_delete': ssi_lab.is_delete,
-            'lab_number': ssi_lab.lab_number
+            'lab_number': ssi_lab.lab_number,
+            'img_segmentation': ssi_lab.img_segmentation,
+            'img_total': ssi_lab.img_total
         }
         for ssi_lab in ssi_labs
     ]
@@ -501,10 +505,12 @@ def ssi_update_lab(lab_number):
                     'id': lab.id,
                     'lab_name': lab.lab_name,
                     'location': lab.location,
-                    'create_time': lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if lab.create_time else None,
-                    'update_time': lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if lab.update_time else None,
+                    'create_time': lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
+                    'update_time': lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
                     'is_delete': lab.is_delete,
-                    'lab_number': lab.lab_number
+                    'lab_number': lab.lab_number,
+                    'img_segmentation': lab.img_segmentation,
+                    'img_total': lab.img_total
                 }
             })
         else:
