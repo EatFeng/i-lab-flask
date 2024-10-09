@@ -1,4 +1,3 @@
-import time
 from flask import request, jsonify, send_file
 import os
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +10,7 @@ import tempfile
 import json
 from sqlalchemy import asc
 import time
+import base64
 
 # 实验室管理页面
 @app.route('/manage')
@@ -530,9 +530,35 @@ def ssi_lab(lab_number):
         return jsonify({'error': 'Missing lab_number parameter', 'state': 400}), 400
 
     try:
+        # 查询ssi_Lab表中的记录
+        lab = ssi_Lab.query.filter_by(lab_number=lab_number, is_delete=False).first()
+        if not lab:
+            return jsonify({'error': 'Lab not found', 'state': 404}), 404
+
+        # 将ssi_lab中的img_segmentation和img_total转为base64，传回前端
+        img_seg_base64 = photo2base64(lab.img_segmentation)
+        img_tot_base64 = photo2base64(lab.img_total)
+
+        # 查询Introductions表中的记录
         intros = Introductions.query.filter_by(lab_number=lab_number, is_delete=False).all()
         if not intros:
-            return jsonify({'error': 'No records found', 'state': 404}), 404
+            return jsonify({'error': 'introduction not found', 'state': 404}), 404
+
+        lab_data = {
+            'id': lab.id,
+            'lab_name': lab.lab_name,
+            'location': lab.location,
+            'create_time': lab.create_time.isoformat(),
+            'update_time': lab.update_time.isoformat(),
+            'is_delete': lab.is_delete,
+            'lab_number': lab.lab_number,
+            'img_segmentation': img_seg_base64,
+            'img_total': img_tot_base64,
+            'ico_path': lab.ico_path,
+            'room_num': lab.room_num,
+            'introduction': lab.introduction,
+            'article': lab.article
+        }
 
         intros_data = [
             {
@@ -550,7 +576,7 @@ def ssi_lab(lab_number):
             for intro in intros
         ]
 
-        return jsonify({'state': 200 ,'data': intros_data}), 200
+        return jsonify({'state': 200 ,'lab': lab_data, 'data': intros_data}), 200
 
     except Exception as e:
         app.logger.error(f"Error occurred: {e}")
@@ -591,7 +617,10 @@ def add_intro(lab_number):
                 'summary': new_intro.summary,
                 'details': new_intro.details,
                 'is_delete': new_intro.is_delete,
-                'update_time': new_intro.update_time.isoformat() if new_intro.update_time else None
+                'update_time': new_intro.update_time.isoformat() if new_intro.update_time else None,
+                'point_id': new_intro.point_id,
+                'x': new_intro.x,
+                'y': new_intro.y
             }
         }), 200
     except Exception as e:
@@ -599,8 +628,8 @@ def add_intro(lab_number):
         return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
 # 小屏讲解管理页 -> 详情 -> 编辑
-@app.route('/ssi/update_intro/<int:intro_id>', methods=['POST'])
-def update_intro(intro_id):
+@app.route('/ssi/update_intro/<int:point_id>', methods=['POST'])
+def update_intro(point_id):
     # 从表单中获取数据
     summary = request.form.get('summary')
     details = request.form.get('details')
@@ -612,7 +641,7 @@ def update_intro(intro_id):
     current_time = beijing_time_now()
 
     # 查询匹配的记录
-    intro = Introductions.query.filter_by(id=intro_id).first()
+    intro = Introductions.query.filter_by(id=point_id).first()
     if intro is None:
         return jsonify({'error': 'Introduction not found', 'state': 404}), 404
 
@@ -633,7 +662,10 @@ def update_intro(intro_id):
                 'summary': intro.summary,
                 'details': intro.details,
                 'is_delete': intro.is_delete,
-                'update_time': intro.update_time.isoformat() if intro.update_time else None
+                'update_time': intro.update_time.isoformat() if intro.update_time else None,
+                'point_id': intro.point_id,
+                'x': intro.x,
+                'y': intro.y
             }
         }), 200
 
@@ -643,10 +675,10 @@ def update_intro(intro_id):
         return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
 # 小屏讲解管理页 -> 详情 -> 删除
-@app.route('/ssi/delete_intro/<int:intro_id>/<int:lab_number>', methods=['POST'])
-def delete_intro(intro_id, lab_number):
+@app.route('/ssi/delete_intro/<int:point_id>/<int:lab_number>', methods=['POST'])
+def delete_intro(point_id, lab_number):
     # 查询匹配的记录
-    intro = Introductions.query.filter_by(id=intro_id, lab_number=lab_number, is_delete=False).first()
+    intro = Introductions.query.filter_by(id=point_id, lab_number=lab_number, is_delete=False).first()
     if intro is None:
         return jsonify({'error': 'Introduction not found or already deleted', 'state': 404}), 404
 
@@ -671,7 +703,10 @@ def delete_intro(intro_id, lab_number):
             'summary': record.summary,
             'details': record.details,
             'is_delete': record.is_delete,
-            'update_time': record.update_time.isoformat() if record.update_time else None
+            'update_time': record.update_time.isoformat() if record.update_time else None,
+            'point_id': record.point_id,
+            'x': record.x,
+            'y': record.y
         }
         for record in intros
     ]
@@ -699,8 +734,8 @@ def get_image(lab_number, point_id):
 
 
 # 小屏讲解管理页 -> 详情 -> 上传照片
-@app.route('/ssi/upload_image/<int:lab_number>/<int:intro_id>', methods=['POST'])
-def upload_image(lab_number, intro_id):
+@app.route('/ssi/upload_image/<int:lab_number>/<int:point_id>', methods=['POST'])
+def upload_image(lab_number, point_id):
     # 检查是否有文件在请求中
     if 'image' not in request.files:
         return jsonify({'error': 'No image part in the request', 'state': 400}), 400
@@ -715,7 +750,7 @@ def upload_image(lab_number, intro_id):
         file.save(image_file_path)
 
         # 查询匹配的记录
-        intro = Introductions.query.filter_by(lab_number=lab_number, id=intro_id, is_delete=False).first()
+        intro = Introductions.query.filter_by(lab_number=lab_number, point_id=point_id, is_delete=False).first()
         if intro is None:
             return jsonify({'error': 'Introduction not found', 'state': 404}), 404
 
@@ -731,6 +766,75 @@ def upload_image(lab_number, intro_id):
             return jsonify({'error': 'Internal server error', 'state': 500}), 500
     else:
         return jsonify({'error': 'File type not allowed', 'state': 400}), 400
+
+# 移动端 -> 上传/修改
+@app.route('/mobile/edit_lab/<int:lab_number>', methods=['POST'])
+def update_ssi_lab(lab_number):
+    # 获取表单数据
+    data = request.form
+    ico_path = data.get('ico_path')
+    room_num = data.get('room_num')
+    introduction = data.get('introduction')
+    article = data.get('article')
+
+    # 查询ssi_Lab表中的记录
+    lab = ssi_Lab.query.filter_by(lab_number=lab_number, is_delete=False).first()
+    if not lab:
+        return jsonify({'error': 'Lab not found', 'state': 404}), 404
+
+    # 更新记录
+    if ico_path is not None:
+        lab.ico_path = ico_path
+    if room_num is not None:
+        lab.room_num = room_num
+    if introduction is not None:
+        lab.introduction = introduction
+    if article is not None:
+        lab.article = article
+
+    # 提交更改
+    db.session.commit()
+
+    # 构建返回的JSON数据
+    lab_data = {
+        'id': lab.id,
+        'lab_name': lab.lab_name,
+        'location': lab.location,
+        'create_time': lab.create_time.isoformat(),
+        'update_time': lab.update_time.isoformat(),
+        'is_delete': lab.is_delete,
+        'lab_number': lab.lab_number,
+        'img_segmentation': lab.img_segmentation,
+        'img_total': lab.img_total,
+        'ico_path': lab.ico_path,
+        'room_num': lab.room_num,
+        'introduction': lab.introduction,
+        'article': lab.article
+    }
+
+    return jsonify({'state': 200, 'message': 'Lab updated successfully', 'data': lab_data}), 200
+
+@app.route('/mobile/lab/<int:lab_number>', methods=['GET'])
+def get_ssi_lab(lab_number):
+    # 查询ssi_Lab表中的记录
+    lab = ssi_Lab.query.filter_by(lab_number=lab_number, is_delete=False).first()
+    if not lab:
+        return jsonify({'error': 'Lab not found', 'state': 404}), 404
+
+    ico_base64 = photo2base64(lab.ico_path)
+
+    # 构建返回的JSON数据
+    lab_data = {
+        'id': lab.id,
+        'lab_number': lab.lab_number,
+        'lab_name': lab.lab_name,
+        'ico_path': ico_base64,
+        'room_num': lab.room_num,
+        'introduction': lab.introduction,
+        'article': lab.article
+    }
+
+    return jsonify({'state': 200, 'data': lab_data}), 200
 
 # --------------------- 另外的功能 --------------------- #
 # 语音转文字
@@ -826,13 +930,21 @@ def save_guidance():
 # 聊天机器人
 history = [
     {
-            "content": "请用一句话回答所有的问题。",
-            "role": "user"
-        },
-        {
-            "content": "好的，对于所有的问题我都会在一句话中回答清楚。",
-            "role": "assistant"
-        }
+        "content": "请用一句话回答所有的问题。",
+        "role": "user"
+    },
+    {
+        "content": "好的，对于所有的问题我都会在一句话中回答清楚。",
+        "role": "assistant"
+    },
+    {
+        "content": "“和睦天盾”是中广核数科自主研发的国产实物保护集成管理平台，首台套机组应用于太平岭核电项目1号机组。",
+        "role": "user"
+    },
+    {
+        "content": "是的。",
+        "role": "assistant"
+    }
 ]
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -865,3 +977,17 @@ def allowed_audio_file(filename):
 def allowed_image_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
+
+# 将图片转为base64
+def photo2base64(image_path):
+    encoded_string = ''
+    # 检查图片是否存在
+    if image_path is not None:
+        if not os.path.exists(image_path):
+            return "Image not found", 404
+        else:
+            # 读取图片文件并转换为base64字符串
+            with open(image_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+
+    return encoded_string

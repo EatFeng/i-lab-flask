@@ -1,5 +1,5 @@
 from i_lab_flask import db
-
+from datetime import datetime
 class Lab(db.Model):
     __tablename__ = 'labs'
     id = db.Column(db.BigInteger, primary_key=True)
@@ -26,11 +26,15 @@ class ssi_Lab(db.Model):
     lab_name = db.Column(db.String(80), unique=True, nullable=False)
     location = db.Column(db.String(255), nullable=True)
     create_time = db.Column(db.DateTime, nullable=False)
-    update_time = db.Column(db.DateTime, nullable=False)
+    update_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)
     lab_number = db.Column(db.Integer, nullable=False, unique=True)
     img_segmentation = db.Column(db.String(255), nullable=True)
     img_total = db.Column(db.String(255), nullable=True)
+    ico_path = db.Column(db.String(255), nullable=True)
+    room_num = db.Column(db.String(255), nullable=True)
+    introduction = db.Column(db.Text, nullable=True)
+    article = db.Column(db.Text, nullable=True)
 
 class Introductions(db.Model):
     __tablename__ = 'intro'
@@ -40,7 +44,7 @@ class Introductions(db.Model):
     summary= db.Column(db.String(200), nullable=False)
     details = db.Column(db.Text, nullable=False)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)
-    update_time = db.Column(db.DateTime, nullable=True)
+    update_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     point_id = db.Column(db.Integer, nullable=False)
     x = db.Column(db.Float(53), nullable=True)  # 可为null，可重复
     y = db.Column(db.Float(53), nullable=True)  # 可为null，可重复
