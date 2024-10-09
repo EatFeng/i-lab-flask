@@ -29,6 +29,8 @@ class ssi_Lab(db.Model):
     update_time = db.Column(db.DateTime, nullable=False)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)
     lab_number = db.Column(db.Integer, nullable=False, unique=True)
+    img_segmentation = db.Column(db.String(255), nullable=True)
+    img_total = db.Column(db.String(255), nullable=True)
 
 class Introductions(db.Model):
     __tablename__ = 'intro'
@@ -39,3 +41,6 @@ class Introductions(db.Model):
     details = db.Column(db.Text, nullable=False)
     is_delete = db.Column(db.Boolean, nullable=False, default=False)
     update_time = db.Column(db.DateTime, nullable=True)
+    point_id = db.Column(db.Integer, nullable=False)
+    x = db.Column(db.Float(53), nullable=True)  # 可为null，可重复
+    y = db.Column(db.Float(53), nullable=True)  # 可为null，可重复
