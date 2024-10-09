@@ -2,7 +2,7 @@ import time
 from flask import request, jsonify, send_file
 import os
 from sqlalchemy.exc import IntegrityError
-from i_lab_flask import app, db, tts_executor, asr_executor, tokenizer, model, history
+from i_lab_flask import app, db, tts_executor, asr_executor, tokenizer, model
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from datetime import  datetime
 from zoneinfo import ZoneInfo
@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 import tempfile
 import json
 from sqlalchemy import asc
+import time
 
 # 实验室管理页面
 @app.route('/manage')
@@ -391,7 +392,9 @@ def ssi_manage():
             'create_time': ssi_lab.create_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.create_time else None,
             'update_time': ssi_lab.update_time.strftime('%Y-%m-%d %H:%M:%S') if ssi_lab.update_time else None,
             'is_delete': ssi_lab.is_delete,
-            'lab_number': ssi_lab.lab_number
+            'lab_number': ssi_lab.lab_number,
+            'img_segmentation': ssi_lab.img_segmentation,
+            'img_total': ssi_lab.img_total
         }
         for ssi_lab in ssi_labs
     ]
@@ -539,7 +542,10 @@ def ssi_lab(lab_number):
                 'summary': intro.summary,
                 'details': intro.details,
                 'is_delete': intro.is_delete,
-                'update_time': intro.update_time.isoformat() if intro.update_time else None
+                'update_time': intro.update_time.isoformat() if intro.update_time else None,
+                'point_id': intro.point_id,
+                'x': intro.x,
+                'y': intro.y
             }
             for intro in intros
         ]
@@ -674,10 +680,10 @@ def delete_intro(intro_id, lab_number):
     return jsonify(intros_data), 200
 
 # 小屏讲解管理页 -> 详情 -> 获取照片
-@app.route('/ssi/get_image/<int:lab_number>/<int:intro_id>', methods=['GET'])
-def get_image(lab_number, intro_id):
+@app.route('/ssi/get_image/<int:lab_number>/<int:point_id>', methods=['GET'])
+def get_image(lab_number, point_id):
     # 查询匹配的记录
-    intro = Introductions.query.filter_by(lab_number=lab_number, id=intro_id, is_delete=False).first()
+    intro = Introductions.query.filter_by(lab_number=lab_number, point_id=point_id, is_delete=False).first()
     if intro is None or not intro.image_path:
         return jsonify({'error': 'Image not found', 'state': 404}), 404
 
@@ -818,6 +824,16 @@ def save_guidance():
     return jsonify({'message': 'Successfully Saved'})
 
 # 聊天机器人
+history = [
+    {
+            "content": "请用一句话回答所有的问题。",
+            "role": "user"
+        },
+        {
+            "content": "好的，对于所有的问题我都会在一句话中回答清楚。",
+            "role": "assistant"
+        }
+]
 @app.route('/chat', methods=['POST'])
 def chat():
     global history
@@ -826,14 +842,15 @@ def chat():
     if not query:
         return jsonify({'error': 'No query provided.'}), 400
 
+    start_time = time.time()
     # 生成回复
-    response, history = model.chat(tokenizer, query=query, history=history)
-    print(response)
+    response, history = model.chat(tokenizer, query=query, history=history, temperature=0.3, top_p=0.8, max_new_tokens=64)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(response, elapsed_time)
 
-    # 返回模型的回复
-    return jsonify({'response': response, 'history': history})
-
-
+    # 返回模型的回复和语音文件路径
+    return jsonify({'response': response})
 
 # 获取当前时间的北京时间
 def beijing_time_now():
