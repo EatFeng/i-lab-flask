@@ -193,35 +193,45 @@ def new_lab():
             return jsonify({'state': 400, 'message': 'Lab number already exists'}), 400
 
 # 生成语音请求
-@app.route('/lab/generate-audio/<int:guidance_id>', methods=['POST'])
-def generate_audio(guidance_id):
-    guidance = Guidance.query.get(guidance_id)
-    if guidance:
-        # 删除旧的音频文件
-        if guidance.audio_path is not None and guidance.audio_path[-3:] == 'wav':
-            os.remove(guidance.audio_path)
-        # 生成音频
-        timestamp = int(time.time())  # 获取当前时间戳
-        audio_file_name = f'{guidance_id}_{timestamp}.wav'
-        audio_file_path = 'i_lab_flask/output/' + audio_file_name
-        tts_executor(text=guidance.content, output=audio_file_path)
-        # 更新数据库
-        guidance.audio_path = audio_file_path
-        db.session.commit()
-        # 返回JSON响应
-        return jsonify({
-            'state': 200,
-            'data': {
-                'guidance_id': guidance.id,
-                'lab_number': guidance.lab_number,
-                'point_id': guidance.point_id,
-                'content': guidance.content,
-                'audio_path': guidance.audio_path
-            }
-        })
-    else:
-        # 如果guidance记录不存在，返回404状态码
-        return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
+@app.route('/lab/generate-audio/<int:lab_number>/<int:point_id>', methods=['GET'])
+def generate_audio(lab_number, point_id):
+    try:
+        # 查询Guidance表中的记录
+        guidance = Guidance.query.filter_by(lab_number=lab_number, point_id=point_id, is_delete=False).first()
+        if guidance:
+            # 删除旧的音频文件
+            if guidance.audio_path is not None and guidance.audio_path.endswith('.wav'):
+                os.remove(guidance.audio_path)
+
+            # 生成音频
+            timestamp = int(time.time())  # 获取当前时间戳
+            audio_file_name = f'{guidance.lab_number}_{guidance.point_id}_{timestamp}.wav'
+            audio_file_path = 'i_lab_flask/output/' + audio_file_name
+            tts_executor(text=guidance.content, output=audio_file_path)
+
+            # 更新数据库
+            guidance.audio_path = audio_file_path
+            db.session.commit()
+
+            # 返回JSON响应
+            return jsonify({
+                'state': 200,
+                'data': {
+                    'guidance_id': guidance.id,
+                    'lab_number': guidance.lab_number,
+                    'point_id': guidance.point_id,
+                    'content': guidance.content,
+                    'audio_path': guidance.audio_path,
+                    'topic': guidance.topic
+                }
+            })
+        else:
+            # 如果guidance记录不存在，返回404状态码
+            return jsonify({'state': 404, 'error_message': 'Guidance not found'}), 404
+
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        return jsonify({'state': 500, 'error_message': 'Internal server error'}), 500
 
 # 获取音频文件
 @app.route('/get_audio', methods=['POST'])
@@ -564,7 +574,7 @@ def ssi_lab(lab_number):
             {
                 'id': intro.id,
                 'lab_number': intro.lab_number,
-                'image_path': intro.image_path if intro.image_path else None,
+                'image_path': image_to_base64(intro.image_path) if intro.image_path else None,
                 'summary': intro.summary,
                 'details': intro.details,
                 'is_delete': intro.is_delete,
@@ -732,7 +742,6 @@ def get_image(lab_number, point_id):
     # 返回图片文件
     return send_file(image_file_path, mimetype='image/png')
 
-
 # 小屏讲解管理页 -> 详情 -> 上传照片
 @app.route('/ssi/upload_image/<int:lab_number>/<int:point_id>', methods=['POST'])
 def upload_image(lab_number, point_id):
@@ -766,6 +775,36 @@ def upload_image(lab_number, point_id):
             return jsonify({'error': 'Internal server error', 'state': 500}), 500
     else:
         return jsonify({'error': 'File type not allowed', 'state': 400}), 400
+
+@app.route('/ssi/lab/<int:lab_number>/<int:point_id>', methods=['GET'])
+def get_introduction(lab_number, point_id):
+    try:
+        # 查询Introductions表中的记录
+        intro = Introductions.query.filter_by(lab_number=lab_number, point_id=point_id, is_delete=False).first()
+        if not intro:
+            return jsonify({'error': 'Introduction not found', 'state': 404}), 404
+
+        # 将image_path转为base64
+        image_base64 = image_to_base64(intro.image_path) if intro.image_path else None
+
+        intro_data = {
+            'id': intro.id,
+            'lab_number': intro.lab_number,
+            'image_path': image_base64,
+            'summary': intro.summary,
+            'details': intro.details,
+            'is_delete': intro.is_delete,
+            'update_time': intro.update_time.isoformat() if intro.update_time else None,
+            'point_id': intro.point_id,
+            'x': intro.x,
+            'y': intro.y
+        }
+
+        return jsonify({'state': 200, 'data': intro_data}), 200
+
+    except Exception as e:
+        app.logger.error(f"Error occurred: {e}")
+        return jsonify({'error': 'Internal server error', 'state': 500}), 500
 
 # 移动端 -> 上传/修改
 @app.route('/mobile/edit_lab/<int:lab_number>', methods=['POST'])
@@ -981,26 +1020,29 @@ def allowed_image_file(filename):
 
 # 将图片转为base64图像源字符串
 def image_to_base64(image_path):
-    # 检查文件是否存在
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(f"Image file not found: {image_path}")
+    if image_path is not None:
+        # 检查文件是否存在
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image file not found: {image_path}")
 
-    # 读取图片文件为二进制数据
-    with open(image_path, "rb") as image_file:
-        # 将二进制数据转换为Base64编码的字符串
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        # 读取图片文件为二进制数据
+        with open(image_path, "rb") as image_file:
+            # 将二进制数据转换为Base64编码的字符串
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
-    # 获取文件扩展名
-    file_extension = os.path.splitext(image_path)[1].lower()
+        # 获取文件扩展名
+        file_extension = os.path.splitext(image_path)[1].lower()
 
-    # 构建完整的Base64图像源字符串
-    if file_extension == '.jpg' or file_extension == '.jpeg':
-        mime_type = 'image/jpeg'
-    elif file_extension == '.png':
-        mime_type = 'image/png'
+        # 构建完整的Base64图像源字符串
+        if file_extension == '.jpg' or file_extension == '.jpeg':
+            mime_type = 'image/jpeg'
+        elif file_extension == '.png':
+            mime_type = 'image/png'
+        else:
+            raise ValueError("Unsupported image format")
+
+        base64_image_source = f"data:{mime_type};base64,{encoded_string}"
     else:
-        raise ValueError("Unsupported image format")
-
-    base64_image_source = f"data:{mime_type};base64,{encoded_string}"
+        base64_image_source = ""
 
     return base64_image_source
