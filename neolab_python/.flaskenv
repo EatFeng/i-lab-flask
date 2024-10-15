@@ -1,3 +1,4 @@
+SQLALCHEMY_DATABASE_URI=mysql+pymysql://flaskuser:password@localhost/flaskappdb
 SECRET_KEY=f2d6681116356b7c0af1148ebd2b84129a50d389a5d99715
 FLASK_APP=i_lab_flask
 FLASK_RUN_PORT=5005

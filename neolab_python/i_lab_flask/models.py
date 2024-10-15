@@ -1,5 +1,6 @@
 from i_lab_flask import db
 from datetime import datetime
+
 class Lab(db.Model):
     __tablename__ = 'labs'
     id = db.Column(db.BigInteger, primary_key=True)
