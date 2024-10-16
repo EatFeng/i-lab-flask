@@ -1,5 +1,6 @@
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, session
 import os
+import subprocess
 from i_lab_flask import app, db, tts_executor, asr_executor, tokenizer, model
 from i_lab_flask.models import Lab, Guidance, ssi_Lab, Introductions
 from i_lab_flask.config import Config
@@ -13,7 +14,7 @@ from i_lab_flask.utils import query_all_and_return_json, query_one_and_return_js
 from i_lab_flask.utils import check_required_params, item_to_dict
 from i_lab_flask.utils import allowed_image_file, allowed_audio_file, beijing_time_now
 from i_lab_flask.utils import image_to_base64, save_uploaded_file
-from errors import CustomError
+from i_lab_flask.errors import CustomError
 from io import BytesIO
 import logging
 
@@ -64,7 +65,7 @@ def delete_lab(lab_number):
         # 设置is_delete为1而不是删除记录
         lab.is_delete = True
         # 同时更新与该实验室ID关联的所有Guidance记录的is_delete字段
-        related_guidances = Guidance.query.filter_by(lab_id=lab.id).all()
+        related_guidances = Guidance.query.filter_by(lab_number=lab_number).all()
         for guidance in related_guidances:
             guidance.is_delete = True
         commit_session(db)
@@ -172,10 +173,9 @@ def lab(lab_number):
                                              lab_number=new_guidance.lab_number, point_id=new_guidance.point_id)
 
         elif action == 'update_guidance':
-            guidance_id = request.form['guidance_id']
-            guidance = Guidance.query.get(guidance_id)
+            point_id = request.form['point_id']
+            guidance = Guidance.query.filter_by(lab_number=lab_number, point_id=point_id, is_delete=False).first()
             if guidance:
-                guidance.point_id = form_data['point_id']
                 guidance.topic = form_data['topic']
                 guidance.content = form_data['content']
                 guidance.audio_path = form_data['audio_path']
@@ -183,10 +183,10 @@ def lab(lab_number):
                 return query_one_and_return_json(Guidance,
                                                  lab_number=guidance.lab_number, point_id=guidance.point_id)
             else:
-                return get_response(StatusCodes.NOT_FOUND, 0, {'message': 'Guidance not found'})
+                return get_response(StatusCodes.NOT_FOUND, data=0, message={'message': 'Guidance not found'})
                 # 如果 action 不是上述任何一个，返回错误响应
 
-        return get_response(StatusCodes.BAD_REQUEST, 0, {'message': 'Invalid action'})
+        return get_response(StatusCodes.BAD_REQUEST, data=0, data_num={'message': 'Invalid action'})
 
     else:
         guidance = Guidance.query.filter_by(lab_number=lab_number, is_delete=False).order_by(
@@ -199,7 +199,7 @@ def lab(lab_number):
                 'path': g.audio_path
             } for g in guidance
         ]
-        return get_response(StatusCodes.OK, len(guidance), response_data, lab_number)
+        return get_response(StatusCodes.OK, response_data, len(guidance), lab_number)
 
 # 删除讲解请求
 @app.route('/lab/<int:lab_number>/delete-guidance/<int:point_id>', methods=['POST'])
@@ -237,7 +237,7 @@ def delete_guidance(lab_number, point_id):
         return query_all_and_return_json(Guidance, lab_number=lab_number, is_delete=False)
     else:
         # 如果guidance记录不存在，返回404状态码
-        return get_response(StatusCodes.NOT_FOUND, 0, {'message': 'Guidance not found'}), 404
+        return get_response(StatusCodes.NOT_FOUND, data_num=0, message={'message': 'Guidance not found'}), 404
 
 # 生成语音请求
 @app.route('/lab/generate-audio/<int:lab_number>/<int:point_id>', methods=['GET'])
@@ -280,7 +280,7 @@ def generate_audio(lab_number, point_id):
             # 生成音频
             timestamp = int(time.time())  # 获取当前时间戳
             audio_file_name = f'{guidance.lab_number}_{guidance.point_id}_{timestamp}.wav'
-            audio_file_path = 'i_lab_flask/output/' + audio_file_name
+            audio_file_path = 'i_lab_flask\\output\\' + audio_file_name
             tts_executor(text=guidance.content, output=audio_file_path)
 
             # 更新数据库
@@ -291,11 +291,11 @@ def generate_audio(lab_number, point_id):
             return query_one_and_return_json(Guidance, lab_number=lab_number, point_id=point_id, is_delete=False)
         else:
             # 如果guidance记录不存在，返回404状态码
-            return get_response(StatusCodes.NOT_FOUND, 0, {'error_message': 'Guidance not found'}), 404
+            return get_response(StatusCodes.NOT_FOUND, data_num=0, message={'error_message': 'Guidance not found'})
 
     except Exception as e:
         app.logger.error(f"Error occurred: {e}")
-        return get_response(StatusCodes.INTERNAL_SERVER_ERROR, 0, {'error_message': 'Internal server error'}), 500
+        return get_response(StatusCodes.INTERNAL_SERVER_ERROR, data_num=0, message={'error_message': 'Internal server error'})
 
 # 获取音频文件
 @app.route('/lab/get-audio/<int:lab_number>/<int:point_id>', methods=['GET'])
@@ -329,16 +329,16 @@ def get_audio(lab_number, point_id):
 
     # 检查数据库中是否保存该记录的音频路径
     if guidance.audio_path is None:
-        return get_response(StatusCodes.NOT_FOUND, 0, {'error_message': 'File path not exist.'}), 404
+        return get_response(StatusCodes.NOT_FOUND, data=0, data_num={'error_message': 'File path not exist.'})
 
     # 确保文件存在
-    audio_file_path = os.path.join(app.config['UPLOAD_FOLDER'], guidance.audio_path)
+    audio_file_path = str(os.path.join(app.config['UPLOAD_FOLDER'], os.path.basename(guidance.audio_path)))
     print(audio_file_path)
-    if not os.path.isfile(audio_file_path):
-        return get_response(StatusCodes.NOT_FOUND, 0, {'error_message': 'Audio file not found.'}), 404
+    if not os.path.isfile('i_lab_flask' + audio_file_path):
+        return get_response(StatusCodes.NOT_FOUND, data=0, message={'error_message': 'Audio file not found.'})
 
     # 返回音频文件
-    return send_file(str(audio_file_path), as_attachment=True, download_name=secure_filename(guidance.audio_path))
+    return send_file(Config.OUTPUT_AUDIO_PATH + audio_file_path, as_attachment=True, download_name=secure_filename(os.path.basename(guidance.audio_path)))
 
 # 上传音频文件
 @app.route('/upload_audio', methods=['POST'])
@@ -375,7 +375,7 @@ def upload_audio():
     """
     # 检查是否有文件在请求中
     if 'file' not in request.files:
-        return get_response(StatusCodes.BAD_REQUEST, 'No file part in the request')
+        return get_response(StatusCodes.BAD_REQUEST, message='No file part in the request')
 
     file = request.files['file']
     point_id = request.form.get('point_id')
@@ -383,16 +383,16 @@ def upload_audio():
 
     # 检查必填字段
     if file is None or file.filename == '':
-        return get_response(StatusCodes.BAD_REQUEST, 'No selected file')
+        return get_response(StatusCodes.BAD_REQUEST, message='No selected file')
 
     if point_id is None or point_id.strip() == '':
-        return get_response(StatusCodes.BAD_REQUEST, 'point_id is required')
+        return get_response(StatusCodes.BAD_REQUEST, message='point_id is required')
 
     if lab_number is None or lab_number.strip() == '':
-        return get_response(StatusCodes.BAD_REQUEST, 'lab_number is required')
+        return get_response(StatusCodes.BAD_REQUEST, message='lab_number is required')
 
     if not allowed_audio_file(file.filename):
-        return get_response(StatusCodes.BAD_REQUEST, 'File type not allowed')
+        return get_response(StatusCodes.BAD_REQUEST, message='File type not allowed')
 
     # 保存文件
     filename = 'i_lab_flask/upload/' + secure_filename(file.filename)
@@ -406,7 +406,7 @@ def upload_audio():
         topic = existing_guidance.topic
         db.session.commit()
     else:
-        return get_response(StatusCodes.NOT_FOUND, 'Guidance Record not found')
+        return get_response(StatusCodes.NOT_FOUND, message='Guidance Record not found')
 
     # 保存记录到数据库
     new_guidance = Guidance(point_id=point_id,
@@ -417,7 +417,7 @@ def upload_audio():
     db.session.add(new_guidance)
     db.session.commit()
 
-    return get_response(StatusCodes.OK, 'File uploaded successfully', data={'path': audio_file_path})
+    return get_response(StatusCodes.OK, message='File uploaded successfully', data={'path': audio_file_path})
 
 # 发送讲解内容
 @app.route('/get_guidance_content/', methods=['POST'])
@@ -449,8 +449,11 @@ def get_guidance_content():
         4. 检查 `content` 字段是否为 `null` 或者内容为空，如果是则返回404。
         5. 构建包含指导内容的JSON响应并返回。
     """
+    form = request.form
+    print(form)
     # 检查必填字段
-    missing, error_response = check_required_params(request.form, 'lab_number', 'point_id')
+    missing, error_response, _ = check_required_params(request.form, 'lab_number', 'point_id')
+    print("1")
     if missing:
         return error_response
 
@@ -537,9 +540,10 @@ def ssi_new_lab():
     )
 
     # 尝试将新实验室对象保存到数据库
+    db.session.add(new_ssi_lab)
     result = commit_session(db, StatusCodes.BAD_REQUEST, 'Lab number already exists.')
     if result:
-        return jsonify(result), result['state']
+        return result
 
     # 创建成功后，返回实验室的信息
     return get_response(
@@ -587,7 +591,7 @@ def ssi_delete_lab(lab_number):
     # 尝试提交更改
     result = commit_session(db, StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to delete lab.')
     if result:
-        return jsonify(result), result['state']
+        return result
 
     # 获取所有is_delete为False的实验室记录
     ssi_labs = ssi_Lab.query.filter_by(is_delete=False).all()
@@ -655,7 +659,7 @@ def ssi_update_lab(lab_number):
     # 尝试提交修改
     result = commit_session(db, StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to update lab.')
     if result:
-        return jsonify(result), result['state']
+        return result
 
     # 返回更新后的实验室信息
     return get_response(
@@ -732,7 +736,7 @@ def ssi_lab(lab_number):
 
         return get_response(
             status=StatusCodes.OK ,
-            lab=lab_data,
+            lab_number=lab_number,
             data=intros_data)
 
     except Exception as e:
@@ -754,6 +758,7 @@ def add_intro(lab_number):
     表单参数:
         - summary (str): 介绍摘要。
         - details (str): 详细介绍。
+        - point_id(int): 讲解点位。
 
     响应:
         - 成功:
@@ -782,6 +787,7 @@ def add_intro(lab_number):
     # 从表单中获取数据
     summary = form['summary']
     details = form['details']
+    point_id = form['point_id']
 
     # 获取当前时间
     current_time = beijing_time_now()
@@ -789,7 +795,7 @@ def add_intro(lab_number):
     # 创建新的记录
     new_intro = Introductions(
         lab_number=lab_number,
-        time_line=current_time,
+        point_id=point_id,
         summary=summary,
         details=details,
         update_time=current_time
@@ -807,7 +813,6 @@ def add_intro(lab_number):
     intro_data = item_to_dict(
         Introductions, new_intro,
         additional_fields={
-            'time_line': lambda intro: intro.time_line.isoformat(),
             'update_time': lambda intro: intro.update_time.isoformat() if intro.update_time else None
         }
     )
@@ -818,8 +823,8 @@ def add_intro(lab_number):
     )
 
 # 小屏讲解管理页 -> 详情 -> 编辑
-@app.route('/ssi/update_intro/<int:point_id>', methods=['POST'])
-def update_intro(point_id):
+@app.route('/ssi/update_intro/<int:lab_number>', methods=['POST'])
+def update_intro(lab_number):
     """
     更新指定介绍ID的小屏实验室介绍记录。
 
@@ -832,6 +837,7 @@ def update_intro(point_id):
     表单参数:
         - summary (str): 介绍摘要。
         - details (str): 详细介绍。
+        - point_id(int): 讲解点位。
 
     响应:
         - 成功:
@@ -855,15 +861,16 @@ def update_intro(point_id):
     form = request.form
 
     # 检查必需参数
-    missing_params, response = check_required_params(form, 'summary', 'details')
+    missing_params, response = check_required_params(form, 'summary', 'details', 'point_id')
     if missing_params:
         return response
 
     # 获取当前时间
     current_time = beijing_time_now()
+    point_id = form['point_id']
 
     # 查询匹配的记录
-    intro = Introductions.query.filter_by(id=point_id).first()
+    intro = Introductions.query.filter_by(lab_number=lab_number, point_id=point_id).first()
     if intro is None:
         return get_response(StatusCodes.NOT_FOUND, message='Introduction not found')
 
@@ -881,7 +888,6 @@ def update_intro(point_id):
     intro_data = item_to_dict(
         Introductions, intro,
         additional_fields={
-            'time_line': lambda intro: intro.time_line.isoformat(),
             'update_time': lambda intro: intro.update_time.isoformat() if intro.update_time else None
         }
     )
@@ -892,8 +898,8 @@ def update_intro(point_id):
     )
 
 # 小屏讲解管理页 -> 详情 -> 删除
-@app.route('/ssi/delete_intro/<int:point_id>/<int:lab_number>', methods=['POST'])
-def delete_intro(point_id, lab_number):
+@app.route('/ssi/delete_intro/<int:lab_number>/<int:point_id>', methods=['POST'])
+def delete_intro(lab_number, point_id):
     """
     删除指定介绍ID的小屏实验室介绍记录，并将其标记为已删除。
 
@@ -921,7 +927,7 @@ def delete_intro(point_id, lab_number):
         4. 返回所有未删除的介绍记录的JSON响应。
     """
     # 查询匹配的记录
-    intro = Introductions.query.filter_by(id=point_id, lab_number=lab_number, is_delete=False).first()
+    intro = Introductions.query.filter_by(point_id=point_id, lab_number=lab_number, is_delete=False).first()
     if intro is None:
         return get_response(StatusCodes.NOT_FOUND, message='Introduction not found or already deleted')
 
@@ -1025,8 +1031,8 @@ def upload_image(lab_number, point_id):
         return get_response(StatusCodes.BAD_REQUEST, message='No selected file')
 
     if file and allowed_image_file(file.filename):
-        filename = 'i_lab_flask/images/' + secure_filename(file.filename)
-        image_file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filename = secure_filename(file.filename)
+        image_file_path = os.path.join(Config.UPLOAD_IMAGE_PATH, filename)
         file.save(image_file_path)
 
         # 查询匹配的记录
@@ -1095,7 +1101,6 @@ def get_introduction(lab_number, point_id):
             Introductions, intro,
             additional_fields={
                 'image_path': lambda intro: image_base64,
-                'time_line': lambda intro: intro.time_line.isoformat(),
                 'update_time': lambda intro: intro.update_time.isoformat() if intro.update_time else None
             }
         )
@@ -1192,7 +1197,7 @@ def update_ssi_lab(lab_number):
         app.logger.error(f"Error occurred: {e}")
         return get_response(StatusCodes.INTERNAL_SERVER_ERROR, message='Internal server error')
 
-# 移动端 -> 上传/修改
+# 移动端 -> 获取数据
 @app.route('/mobile/lab/<int:lab_number>', methods=['GET'])
 def get_ssi_lab(lab_number):
     """
@@ -1274,8 +1279,9 @@ def speech2text():
     逻辑步骤:
         1. 检查请求中是否包含音频文件。
         2. 读取音频文件并保存到临时文件。
-        3. 调用ASR（自动语音识别）服务进行语音识别。
-        4. 返回识别结果。
+        3. 使用 sox 将音频文件转换为 .wav 格式。
+        4. 调用 ASR（自动语音识别）服务进行语音识别。
+        5. 返回识别结果
     """
     if 'file' not in request.files:
         raise CustomError('No file part in the request')
@@ -1287,19 +1293,44 @@ def speech2text():
     if file:
         # 保存文件到内存
         audio_data = file.read()
-        with tempfile.NamedTemporaryFile(delete=True) as temp_file:
-            temp_file.write(audio_data)
-            temp_file.flush()
 
-            # 调用ASR进行语音识别
-            try:
-                result = asr_executor(audio_file=temp_file.name)
-            except Exception as e:
-                app.logger.error(f"ASR error: {e}")
-                raise CustomError(str(e), status_code=500)
+        # 创建临时文件并写入音频数据
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.write(audio_data)
+        temp_file.close()
+        temp_file_path = temp_file.name
+
+        # 使用 sox 将音频文件转换为 .wav 格式
+        wav_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        wav_temp_file.close()
+        wav_temp_file_path = wav_temp_file.name
+        try:
+            result = subprocess.run(
+                ['sox', temp_file_path, '-r', '16k', '-b', '16', '-c', '1', wav_temp_file_path],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            app.logger.info(f"SOX command output: {result.stdout}")
+        except subprocess.CalledProcessError as e:
+            app.logger.error(f"SOX error: {e.stderr}")
+            raise CustomError('Failed to convert audio file to .wav format', status_code=500)
+
+        # 调用 ASR 进行语音识别
+        try:
+            result = asr_executor(audio_file=wav_temp_file_path)
+        except Exception as e:
+            app.logger.error(f"ASR error: {e}")
+            raise CustomError(str(e), status_code=500)
+
+        # 删除临时文件
+        os.remove(temp_file_path)
+        os.remove(wav_temp_file_path)
 
         # 返回识别结果
         return jsonify({'text': result})
+    else:
+        raise CustomError('Invalid file')
 
 # 文字转语音
 @app.route('/text2speech', methods=['POST'])
@@ -1335,10 +1366,21 @@ def text2speech():
 
     # 生成语音文件
     try:
-        with BytesIO() as temp_file:
-            tts_executor(text=text, output=temp_file)
-            temp_file.seek(0)
-            return send_file(temp_file, as_attachment=True, download_name='output.wav', mimetype='audio/wav')
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            temp_file_path = temp_file.name
+            tts_executor(text=text, output=temp_file_path)
+
+        with open(temp_file_path, 'rb') as f:
+            audio_data = f.read()
+
+        os.remove(temp_file_path)
+
+        return send_file(
+            BytesIO(audio_data),
+            as_attachment=True,
+            download_name='output.wav',
+            mimetype='audio/wav'
+        )
     except Exception as e:
         app.logger.error(f"TTS error: {e}")
         raise CustomError(str(e), status_code=500)
@@ -1450,7 +1492,7 @@ def save_guidance():
 
             # 生成安全的文件名
             filename = secure_filename(file.filename)
-            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            audio_path = os.path.join(Config.OUTPUT_AUDIO_PATH, filename)
 
             new_record = Guidance(
                 lab_number=lab_number,

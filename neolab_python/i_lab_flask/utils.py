@@ -8,7 +8,7 @@ import os
 from i_lab_flask import app
 
 # 数据库会话提交和错误处理
-def commit_session(db, error_status, error_message):
+def commit_session(db, error_status=StatusCodes.BAD_REQUEST, error_message='Failed to create a new lab.'):
     """
     提交数据库会话，处理事务。
 
@@ -65,7 +65,7 @@ def query_all_and_return_json(model, **filters):
     data = [item_to_dict(model, item) for item in items]
 
     # 返回JSON响应
-    return get_response(state=StatusCodes.OK, data_num=len(items), data=data)
+    return get_response(status=StatusCodes.OK, data_num=len(items), data=data)
 
 # 查询数据库一条记录并返回JSON
 def query_one_and_return_json(model, **filters):
@@ -90,7 +90,7 @@ def query_one_and_return_json(model, **filters):
     data = item_to_dict(model, item)
 
     # 返回 JSON 响应
-    return get_response(state=StatusCodes.OK, data_num=1, data=data)
+    return get_response(status=StatusCodes.OK, data_num=1, data=data)
 
 # 构建JSON中的data字典
 def item_to_dict(model, instance, additional_fields=None):
@@ -118,7 +118,7 @@ def item_to_dict(model, instance, additional_fields=None):
 
     return data_dict
 
-def get_response(status, data=None, data_num=None, lab_number=None, massage=None):
+def get_response(status, data=None, data_num=None, lab_number=None, message=None):
     """
     构建HTTP响应。
 
@@ -141,8 +141,8 @@ def get_response(status, data=None, data_num=None, lab_number=None, massage=None
         response['data_num'] = data_num
     if lab_number is not None:
         response['lab_number'] = lab_number
-    if massage is not None:
-        response['massage'] = massage
+    if message is not None:
+        response['massage'] = message
     return jsonify(response), status
 
 
@@ -258,7 +258,7 @@ def check_required_params(form, *params):
             - dict: 如果存在缺失的参数，返回包含错误信息的JSON响应；否则返回None。
     """
     for param in params:
-        if param not in form or form[params].strip() == '':
+        if param not in form or form[param].strip() == '':
             return True, get_response(status=StatusCodes.BAD_REQUEST, message=f'{param} is required')
-    return False, None, None
+    return False, None
 
